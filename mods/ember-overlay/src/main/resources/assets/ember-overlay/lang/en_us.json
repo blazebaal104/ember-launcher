@@ -1,0 +1,15 @@
+{
+  "key.ember-overlay.menu": "Open Ember menu",
+  "key.ember-overlay.zoom": "Zoom",
+  "key.ember-overlay.freelook": "Free look",
+  "key.ember-overlay.snaplook": "Snap look behind",
+  "key.ember-overlay.stopwatch": "Start / stop stopwatch",
+  "key.ember-overlay.memory": "Free memory",
+  "key.ember-overlay.servers": "Quick server switcher",
+  "key.ember-overlay.smoothcam": "Toggle cinematic camera",
+  "key.categories.ember-overlay": "Ember Overlay",
+  "key.ember-overlay.copycoords": "Copy coordinates",
+  "key.ember-overlay.macro1": "Chat macro 1",
+  "key.ember-overlay.macro2": "Chat macro 2",
+  "key.ember-overlay.macro3": "Chat macro 3"
+}

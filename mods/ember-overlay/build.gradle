@@ -1,0 +1,34 @@
+plugins {
+    id "fabric-loom" version "${loom_version}"
+}
+
+version = "${project.mod_version}+${project.minecraft_version}"
+group = "dev.ember"
+base { archivesName = "ember-overlay" }
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    // Official Mojang names: same names as 26.x's unobfuscated jars, so ports are mechanical.
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") { expand "version": project.version, "mc": project.minecraft_version }
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
+
+// The launcher looks for resources/overlay/ember-overlay-<mc>.jar
+tasks.register("copyToLauncher", Copy) {
+    dependsOn remapJar
+    from remapJar.archiveFile
+    into "../../apps/desktop/src-tauri/resources/overlay"
+    rename { "ember-overlay-${project.minecraft_version}.jar" }
+}

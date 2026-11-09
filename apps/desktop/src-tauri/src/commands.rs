@@ -1,0 +1,392 @@
+//! IPC commands. Everything the webview sends is treated as untrusted input:
+//! ids are validated, download hosts are allow-listed, file names are sanitised.
+use crate::state::{AppState, CURSEFORGE_KEY, KEYRING_SERVICE, KEYRING_USER};
+use launcher_core::auth::{is_valid_client_id, Account, DeviceCode};
+use launcher_core::settings::LauncherSettings;
+use launcher_core::download::{download_all, DownloadJob, Progress};
+use launcher_core::instance::{CreateInstance, HookReport, InstanceConfig};
+use launcher_core::launch::{self, LaunchIdentity, LaunchOptions};
+use launcher_core::versions::{fetch_manifest, supported_versions, GameVersion};
+use launcher_core::{install, java, Error, Result};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_opener::OpenerExt;
+use tokio::io::{AsyncBufReadExt, BufReader};
+
+// ------------------------------------------------------------------ versions & instances
+
+#[tauri::command]
+pub async fn list_versions(state: State<'_, AppState>) -> Result<Vec<GameVersion>> {
+    Ok(supported_versions(&fetch_manifest(&state.client).await?))
+}
+
+#[tauri::command]
+pub async fn list_instances(state: State<'_, AppState>) -> Result<Vec<InstanceConfig>> {
+    state.instances.list().await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Created {
+    instance: InstanceConfig,
+    reports: Vec<HookReport>,
+}
+
+/// Runs the hook pipeline, so the performance bundle is injected automatically.
+#[tauri::command]
+pub async fn create_instance(state: State<'_, AppState>, req: CreateInstance) -> Result<Created> {
+    let (instance, reports) = state.instances.create(req).await?;
+    Ok(Created { instance, reports })
+}
+
+#[tauri::command]
+pub async fn delete_instance(state: State<'_, AppState>, id: String) -> Result<()> {
+    state.instances.delete(&id).await
+}
+
+#[tauri::command]
+pub async fn open_instance_folder(app: AppHandle, state: State<'_, AppState>, id: String, sub: Option<String>) -> Result<()> {
+    let inst = state.instances.load(&id).await?; // validates the id exists
+    let mut dir = state.paths.instance(&inst.id);
+    if let Some(s) = sub.filter(|s| launcher_core::paths::INSTANCE_DIRS.contains(&s.as_str())) {
+        dir = dir.join(s);
+    }
+    app.opener().open_path(dir.display().to_string(), None::<&str>).map_err(|e| Error::Other(e.to_string()))
+}
+
+// ------------------------------------------------------------------ auth
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountSummary {
+    username: String,
+    uuid: String,
+    skin_url: Option<String>,
+}
+
+impl From<&Account> for AccountSummary {
+    fn from(a: &Account) -> Self {
+        Self { username: a.username.clone(), uuid: a.uuid.clone(), skin_url: a.skin_url.clone() }
+    }
+}
+
+// ------------------------------------------------------------------ settings
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsView {
+    #[serde(flatten)]
+    settings: LauncherSettings,
+    /// True when sign-in can be attempted (a valid client id is configured somewhere).
+    sign_in_configured: bool,
+    /// True when the id comes from the build, not from the user's settings.
+    using_build_default: bool,
+}
+
+#[tauri::command]
+pub async fn get_settings(state: State<'_, AppState>) -> Result<SettingsView> {
+    let settings = state.settings.lock().await.clone();
+    let effective = state.client_id().await;
+    Ok(SettingsView {
+        using_build_default: settings.msa_client_id.as_deref().unwrap_or("").trim().is_empty() && effective.is_some(),
+        sign_in_configured: effective.as_deref().map(is_valid_client_id).unwrap_or(false),
+        settings,
+    })
+}
+
+#[tauri::command]
+pub async fn save_settings(state: State<'_, AppState>, settings: LauncherSettings) -> Result<SettingsView> {
+    let mut settings = settings;
+    if let Some(id) = settings.msa_client_id.as_mut() {
+        *id = id.trim().to_string();
+        if !id.is_empty() && !is_valid_client_id(id) {
+            return Err(Error::AppMisconfigured("that doesn't look like a client ID. It has the form xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx".into()));
+        }
+    }
+    let changed_id = state.settings.lock().await.msa_client_id != settings.msa_client_id;
+    settings.save(&state.paths).await?;
+    *state.settings.lock().await = settings;
+    if changed_id {
+        // Tokens belong to the old app; sign out so the next sign-in uses the new one.
+        *state.account.lock().await = None;
+        delete_refresh_token(&state).await;
+    }
+    get_settings(state).await
+}
+
+// ------------------------------------------------------------------ sign-in
+
+#[tauri::command]
+pub async fn login_start(state: State<'_, AppState>) -> Result<DeviceCode> {
+    let code = state.auth().await.start_device_flow().await?;
+    *state.pending_login.lock().await = Some(code.clone());
+    Ok(code)
+}
+
+/// Abandon a pending device-code sign-in (the poll stops at its next tick).
+#[tauri::command]
+pub async fn login_cancel(state: State<'_, AppState>) -> Result<()> {
+    *state.pending_login.lock().await = None;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn login_finish(state: State<'_, AppState>) -> Result<AccountSummary> {
+    let code = state.pending_login.lock().await.clone().ok_or_else(|| Error::Auth("no sign-in in progress".into()))?;
+    let auth = state.auth().await;
+    // Poll until done, but stop if the user cancelled or started a new sign-in.
+    let account = tokio::select! {
+        r = auth.complete_device_flow(&code) => r?,
+        _ = wait_cancelled(&state, &code.device_code) => return Err(Error::Auth("sign-in was cancelled".into())),
+    };
+    *state.pending_login.lock().await = None;
+    store_refresh_token(&state, &account.ms_refresh_token).await;
+    let summary = AccountSummary::from(&account);
+    *state.account.lock().await = Some(account);
+    Ok(summary)
+}
+
+/// Silent sign-in from the keychain on startup.
+#[tauri::command]
+pub async fn current_account(state: State<'_, AppState>) -> Result<Option<AccountSummary>> {
+    Ok(ensure_account(&state).await.ok().map(|a| AccountSummary::from(&a)))
+}
+
+#[tauri::command]
+pub async fn logout(state: State<'_, AppState>) -> Result<()> {
+    *state.account.lock().await = None;
+    delete_refresh_token(&state).await;
+    Ok(())
+}
+
+/// Fallback location when the OS keychain refuses the token (Windows Credential Manager
+/// caps secrets at ~2.5 KB). It lives in the user's own profile folder.
+fn token_file(state: &AppState) -> std::path::PathBuf {
+    state.paths.root().join("auth").join("refresh_token")
+}
+
+async fn store_refresh_token(state: &AppState, token: &str) {
+    let in_keychain = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).and_then(|e| e.set_password(token));
+    match in_keychain {
+        Ok(()) => {
+            let _ = tokio::fs::remove_file(token_file(state)).await;
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "keychain refused the refresh token, storing it in the profile folder");
+            let path = token_file(state);
+            if let Some(dir) = path.parent() {
+                let _ = tokio::fs::create_dir_all(dir).await;
+            }
+            if tokio::fs::write(&path, token).await.is_ok() {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).await;
+                }
+            }
+        }
+    }
+}
+
+async fn load_refresh_token(state: &AppState) -> Option<String> {
+    if let Ok(t) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).and_then(|e| e.get_password()) {
+        return Some(t);
+    }
+    tokio::fs::read_to_string(token_file(state)).await.ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
+}
+
+async fn delete_refresh_token(state: &AppState) {
+    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
+        let _ = entry.delete_credential();
+    }
+    let _ = tokio::fs::remove_file(token_file(state)).await;
+}
+
+async fn wait_cancelled(state: &AppState, device_code: &str) {
+    loop {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        let pending = state.pending_login.lock().await;
+        if pending.as_ref().map(|p| p.device_code.as_str()) != Some(device_code) {
+            return;
+        }
+    }
+}
+
+async fn ensure_account(state: &AppState) -> Result<Account> {
+    let mut guard = state.account.lock().await;
+    let now = chrono_now();
+    if let Some(a) = guard.as_ref() {
+        if a.mc_expires_at - 300 > now {
+            return Ok(a.clone());
+        }
+    }
+    let refresh = match guard.as_ref() {
+        Some(a) => a.ms_refresh_token.clone(),
+        None => load_refresh_token(state).await.ok_or(Error::NotSignedIn)?,
+    };
+    let fresh = match state.auth().await.refresh(&refresh).await {
+        Ok(a) => a,
+        Err(Error::NotSignedIn) => {
+            // Stale token: forget it so the UI shows the sign-in button.
+            *guard = None;
+            delete_refresh_token(state).await;
+            return Err(Error::NotSignedIn);
+        }
+        Err(e) => return Err(e),
+    };
+    store_refresh_token(state, &fresh.ms_refresh_token).await;
+    *guard = Some(fresh.clone());
+    Ok(fresh)
+}
+
+fn chrono_now() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
+}
+
+// ------------------------------------------------------------------ launching
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LaunchProgress {
+    instance_id: String,
+    stage: &'static str,
+    done: u64,
+    total: u64,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct GameLog {
+    instance_id: String,
+    line: String,
+}
+
+#[tauri::command]
+pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: String, server: Option<String>) -> Result<()> {
+    let mut inst = state.instances.load(&id).await?;
+    let account = ensure_account(&state).await?;
+
+    let emit = |stage: &'static str| {
+        let app = app.clone();
+        let id = id.clone();
+        Arc::new(move |done, total| {
+            let _ = app.emit("launch-progress", LaunchProgress { instance_id: id.clone(), stage, done, total });
+        }) as Progress
+    };
+
+    let prepared = install::prepare(&state.client, &state.paths, &inst, Some(emit("files"))).await?;
+    let component = prepared.json.java_version.as_ref().map(|j| j.component.clone()).unwrap_or_else(|| "java-runtime-delta".into());
+    let java = java::ensure_runtime(&state.client, &state.paths, &component, Some(emit("java"))).await?;
+
+    let who = LaunchIdentity { username: account.username.clone(), uuid: account.uuid.clone(), access_token: account.mc_access_token.clone(), xuid: account.xuid.clone() };
+    let cmd = launch::build(&state.paths, &inst, &prepared, java, &who, &LaunchOptions { quick_play_server: server, ..Default::default() });
+    let mut child = launch::spawn(&cmd)?;
+
+    // Stream logs (the access token is never logged: it only exists in argv).
+    for (stream, is_err) in [(child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Send + Unpin>), false), (child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Send + Unpin>), true)] {
+        let Some(stream) = stream else { continue };
+        let app = app.clone();
+        let id = id.clone();
+        tokio::spawn(async move {
+            let mut lines = BufReader::new(stream).lines();
+            while let Ok(Some(line)) = lines.next_line().await {
+                let line = if is_err { format!("[stderr] {line}") } else { line };
+                let _ = app.emit("game-log", GameLog { instance_id: id.clone(), line });
+            }
+        });
+    }
+    let exit_app = app.clone();
+    let exit_id = id.clone();
+    tokio::spawn(async move {
+        let code = child.wait().await.ok().and_then(|s| s.code());
+        let _ = exit_app.emit("game-exit", serde_json::json!({ "instanceId": exit_id, "code": code }));
+    });
+
+    inst.last_played = Some(launcher_core::chrono::Utc::now());
+    state.instances.save(&inst).await?;
+    let _ = app.emit("launch-progress", LaunchProgress { instance_id: id, stage: "running", done: 1, total: 1 });
+    Ok(())
+}
+
+// ------------------------------------------------------------------ content installation
+
+/// Files must come from these hosts (Modrinth CDN, CurseForge CDN).
+const DOWNLOAD_HOSTS: &[&str] = &["cdn.modrinth.com", "edge.forgecdn.net", "mediafilez.forgecdn.net"];
+const CONTENT_DIRS: &[&str] = &["mods", "resourcepacks", "shaderpacks", "datapacks"];
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallFile {
+    url: String,
+    file_name: String,
+    sha1: Option<String>,
+    size: Option<u64>,
+    /// "mods" | "resourcepacks" | "shaderpacks" | "datapacks"
+    #[serde(default = "mods")]
+    dir: String,
+}
+fn mods() -> String {
+    "mods".into()
+}
+
+/// Used by Discover installs and by the Transfer Tool's one-click install.
+#[tauri::command]
+pub async fn install_files(app: AppHandle, state: State<'_, AppState>, instance_id: String, files: Vec<InstallFile>) -> Result<usize> {
+    let inst = state.instances.load(&instance_id).await?;
+    let base = state.paths.instance(&inst.id);
+    let mut jobs = Vec::with_capacity(files.len());
+    for f in files {
+        let url = url::Url::parse(&f.url).map_err(|_| Error::Other(format!("bad url {}", f.url)))?;
+        if url.scheme() != "https" || !DOWNLOAD_HOSTS.contains(&url.host_str().unwrap_or("")) {
+            return Err(Error::Other(format!("refusing download from {}", url.host_str().unwrap_or("?"))));
+        }
+        if !CONTENT_DIRS.contains(&f.dir.as_str()) {
+            return Err(Error::Other(format!("invalid target folder {}", f.dir)));
+        }
+        let name = sanitize_file_name(&f.file_name).ok_or_else(|| Error::Other(format!("invalid file name {}", f.file_name)))?;
+        jobs.push(DownloadJob { url: f.url, dest: base.join(&f.dir).join(name), sha1: f.sha1, size: f.size });
+    }
+    let n = jobs.len();
+    let id = instance_id.clone();
+    let progress: Progress = Arc::new(move |done, total| {
+        let _ = app.emit("install-progress", serde_json::json!({ "instanceId": id, "done": done, "total": total }));
+    });
+    download_all(&state.client, jobs, 8, Some(progress)).await?;
+    Ok(n)
+}
+
+fn sanitize_file_name(name: &str) -> Option<String> {
+    let n = name.rsplit(['/', '\\']).next()?.trim();
+    let ok = !n.is_empty() && n != "." && n != ".." && n.chars().all(|c| c.is_ascii_alphanumeric() || "._-+ ()[]".contains(c));
+    ok.then(|| n.to_string())
+}
+
+// ------------------------------------------------------------------ CurseForge proxy
+
+const CF_ALLOWED: &[(&str, &str)] = &[
+    ("GET", "/v1/mods/search"),
+    ("GET", "/v1/mods/"), // /v1/mods/{id}/files
+    ("POST", "/v1/mods"),
+    ("POST", "/v1/fingerprints/432"),
+];
+
+/// Read-only CurseForge proxy so the API key never reaches the webview.
+#[tauri::command]
+pub async fn curseforge_request(state: State<'_, AppState>, method: String, path: String, body: Option<serde_json::Value>) -> Result<serde_json::Value> {
+    let key = CURSEFORGE_KEY.ok_or_else(|| Error::Other("CurseForge is not configured in this build".into()))?;
+    let allowed = CF_ALLOWED.iter().any(|(m, p)| *m == method && (path == *p || (p.ends_with('/') && path.starts_with(p))));
+    if !allowed || path.contains("..") {
+        return Err(Error::Other(format!("CurseForge path not allowed: {method} {path}")));
+    }
+    let url = format!("https://api.curseforge.com{path}");
+    let req = match method.as_str() {
+        "GET" => state.client.get(url),
+        _ => state.client.post(url).json(&body.unwrap_or(serde_json::Value::Null)),
+    };
+    let res = req.header("x-api-key", key).header("Accept", "application/json").send().await?;
+    if res.status() == reqwest::StatusCode::NOT_FOUND {
+        return Err(Error::NotFound(path));
+    }
+    Ok(res.error_for_status()?.json().await?)
+}

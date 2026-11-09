@@ -1,0 +1,8 @@
+node_modules/
+dist/
+target/
+.gradle/
+build/
+*.log
+.env
+apps/desktop/src-tauri/gen/

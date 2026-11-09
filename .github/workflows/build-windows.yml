@@ -1,0 +1,57 @@
+name: Build Windows installer
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+
+      # `npm install` (not `npm ci`): the lockfile was created on Linux and npm
+      # sometimes skips Windows-only optional packages with `ci`.
+      - name: Install JS dependencies
+        run: npm install
+
+      - name: Build and publish installer
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: apps/desktop
+          tagName: v__VERSION__-build${{ github.run_number }}
+          releaseName: "Ember Launcher v__VERSION__ (build ${{ github.run_number }})"
+          releaseBody: |
+            Download **Ember Launcher_..._x64-setup.exe** below and run it.
+            Windows may show "Windows protected your PC" because the installer isn't code-signed yet: choose More info, then Run anyway.
+            Microsoft sign-in setup: open Settings in the launcher.
+          releaseDraft: false
+          prerelease: true
+
+      # Second copy of the installers, in case the release step can't find them.
+      - name: Upload installers as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ember-launcher-windows
+          path: |
+            target/release/bundle/nsis/*.exe
+            target/release/bundle/msi/*.msi
+          if-no-files-found: warn

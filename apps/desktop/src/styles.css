@@ -1,0 +1,75 @@
+@import "tailwindcss";
+@import "@fontsource/schibsted-grotesk/400.css";
+@import "@fontsource/schibsted-grotesk/500.css";
+@import "@fontsource/schibsted-grotesk/700.css";
+@import "@fontsource/pixelify-sans/600.css";
+
+/*
+  Ember design tokens - deepslate + oxidised copper.
+  Radius follows hierarchy: panel 14px > card 10px > chip 6px.
+*/
+@theme {
+  --font-sans: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-pixel: "Pixelify Sans", "Schibsted Grotesk", sans-serif;
+
+  --color-ink-950: #14161b;
+  --color-slate-base: #191c22;
+  --color-slate-surface: #232731;
+  --color-slate-raised: #2d3240;
+  --color-slate-line: #363c4b;
+  --color-text: #e7e9ee;
+  --color-muted: #8d95a5;
+  --color-copper: #4fb8a0;
+  --color-copper-deep: #2f7d6c;
+  --color-gold: #e3b341;
+  --color-redstone: #e5484d;
+
+  --radius-panel: 14px;
+  --radius-card: 10px;
+  --radius-chip: 6px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--color-slate-base);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-copper);
+  outline-offset: 2px;
+}
+
+/* The one decorative device: a faint block grid behind the hero, like a world seen from above. */
+.block-grid {
+  background-image:
+    linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-slate-raised);
+  border-radius: 10px;
+  border: 2px solid var(--color-slate-base);
+}

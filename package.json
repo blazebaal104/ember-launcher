@@ -1,0 +1,12 @@
+{
+  "name": "ember-launcher",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": ["packages/*", "apps/desktop"],
+  "scripts": {
+    "dev": "npm --workspace apps/desktop run tauri dev",
+    "build": "npm --workspace apps/desktop run tauri build",
+    "test": "npm --workspace packages/content-engine run test",
+    "typecheck": "npm --workspaces run typecheck"
+  }
+}
