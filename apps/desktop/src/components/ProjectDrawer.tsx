@@ -1,9 +1,9 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, Download, ExternalLink, GalleryHorizontal, Heart, History, Monitor, Server as ServerIcon, X } from "lucide-react";
+import { BookOpen, Check, Download, ExternalLink, GalleryHorizontal, Heart, History, Monitor, Server as ServerIcon, X } from "lucide-react";
 import type { ContentCategory } from "@ember/content-engine";
-import { useApp } from "../state";
-import { useFavorites, useProject, useProjectVersions, useServers } from "../lib/queries";
+import { useApp, type ProjectRef } from "../state";
+import { isInstalled, useFavorites, useInstalled, useProject, useProjectVersions, useServers } from "../lib/queries";
 import { renderMarkdown } from "../lib/markdown";
 import { compatibleInstances, installProject } from "../lib/install";
 import { api, inTauri, type World } from "../lib/ipc";
@@ -30,7 +30,8 @@ export function ProjectDrawer() {
             role="dialog"
             aria-label={project.title}
           >
-            <DrawerBody key={project.id} />
+            {/* The project is passed as a prop so the closing animation still has it after it's cleared. */}
+            <DrawerBody key={project.id} project={project} />
           </motion.aside>
         </motion.div>
       )}
@@ -38,13 +39,13 @@ export function ProjectDrawer() {
   );
 }
 
-function DrawerBody() {
-  const { project: ref, openProject, instances, toast, dismiss, refresh } = useApp();
+function DrawerBody({ project: ref }: { project: ProjectRef }) {
+  const { openProject, instances, toast, dismiss, refresh } = useApp();
   const qc = useQueryClient();
-  const category = (ref!.category ?? "mods") as ContentCategory;
-  const isModrinth = ref!.source === "modrinth";
-  const projectQ = useProject(isModrinth ? ref!.id : undefined);
-  const versionsQ = useProjectVersions(isModrinth ? ref!.id : undefined);
+  const category = (ref.category ?? "mods") as ContentCategory;
+  const isModrinth = ref.source === "modrinth";
+  const projectQ = useProject(isModrinth ? ref.id : undefined);
+  const versionsQ = useProjectVersions(isModrinth ? ref.id : undefined);
   const favs = useFavorites();
   const servers = useServers();
   const [tab, setTab] = useState<Tab>("about");
@@ -52,9 +53,11 @@ function DrawerBody() {
   const p = projectQ.data;
 
   const targets = useMemo(() => compatibleInstances(category, instances), [category, instances]);
-  const [instanceId, setInstanceId] = useState(targets[0]?.id ?? "");
+  const [instanceId, setInstanceId] = useState(() => (ref.instanceId && targets.some((t) => t.id === ref.instanceId) ? ref.instanceId : targets[0]?.id ?? ""));
   const instance = targets.find((i) => i.id === instanceId);
   const pluginServers = (servers.data ?? []).filter((s) => s.kind === "paper");
+  const installedSet = useInstalled(category === "mods" || category === "resourcepacks" || category === "shaders" ? instance?.id : undefined).data;
+  const alreadyIn = !!instance && isInstalled(installedSet, ref);
   const [serverId, setServerId] = useState("");
   useEffect(() => setServerId((cur) => cur || pluginServers[0]?.id || ""), [pluginServers]);
   const [worlds, setWorlds] = useState<World[]>([]);
@@ -73,23 +76,23 @@ function DrawerBody() {
     return () => window.removeEventListener("keydown", onKey);
   }, [openProject]);
 
-  const isFav = (favs.data ?? []).some((f) => f.id === ref!.id);
+  const isFav = (favs.data ?? []).some((f) => f.id === ref.id);
   const toggleFav = async () => {
-    const list = await api.toggleFavorite({ source: ref!.source, id: ref!.id, slug: ref!.slug, title: ref!.title, iconUrl: ref!.iconUrl, category, description: ref!.description });
+    const list = await api.toggleFavorite({ source: ref.source, id: ref.id, slug: ref.slug, title: ref.title, iconUrl: ref.iconUrl, category, description: ref.description });
     qc.setQueryData(["favorites"], list);
     toast({ title: isFav ? "Removed from favorites" : "Added to favorites", tone: "info" });
   };
 
   const install = async () => {
     setBusy(true);
-    const t = toast({ title: `Installing ${ref!.title}`, tone: "progress" });
+    const t = toast({ title: `Installing ${ref.title}`, tone: "progress" });
     try {
-      const summary = await installProject(category, { id: ref!.id, slug: ref!.slug, title: ref!.title, iconUrl: ref!.iconUrl }, { instance, server: pluginServers.find((s) => s.id === serverId), world });
-      toast({ title: `${ref!.title} installed`, body: summary, tone: "success" });
+      const summary = await installProject(category, { id: ref.id, slug: ref.slug, title: ref.title, iconUrl: ref.iconUrl }, { instance, server: pluginServers.find((s) => s.id === serverId), world });
+      toast({ title: `${ref.title} installed`, body: summary, tone: "success" });
       if (category === "modpacks") refresh();
       qc.invalidateQueries({ queryKey: ["content"] });
     } catch (e) {
-      toast({ title: `Couldn't install ${ref!.title}`, body: e instanceof Error ? e.message : String(e), tone: "error" });
+      toast({ title: `Couldn't install ${ref.title}`, body: e instanceof Error ? e.message : String(e), tone: "error" });
     } finally {
       setBusy(false);
       dismiss(t);
@@ -98,7 +101,7 @@ function DrawerBody() {
 
   const html = useMemo(() => (p?.body ? renderMarkdown(p.body) : ""), [p?.body]);
   const gallery = p?.gallery ?? [];
-  const pageUrl = ref!.pageUrl ?? `https://modrinth.com/project/${ref!.slug}`;
+  const pageUrl = ref.pageUrl ?? `https://modrinth.com/project/${ref.slug}`;
 
   const installTargetUi =
     category === "modpacks" ? (
@@ -134,13 +137,13 @@ function DrawerBody() {
       <div className="relative shrink-0 overflow-hidden border-b border-slate-line/70">
         {gallery[0] && <img src={gallery.find((g) => g.featured)?.url ?? gallery[0].url} alt="" className="absolute inset-0 size-full object-cover opacity-25 blur-sm" />}
         <div className="relative flex items-start gap-4 p-6">
-          {ref!.iconUrl ? <motion.img layoutId={`icon-${ref!.id}`} src={ref!.iconUrl} alt="" className="size-20 shrink-0 rounded-panel bg-slate-raised object-cover shadow-lg" /> : <div className="size-20 shrink-0 rounded-panel bg-slate-raised" />}
+          {ref.iconUrl ? <motion.img layoutId={`icon-${ref.id}`} src={ref.iconUrl} alt="" className="size-20 shrink-0 rounded-panel bg-slate-raised object-cover shadow-lg" /> : <div className="size-20 shrink-0 rounded-panel bg-slate-raised" />}
           <div className="min-w-0 flex-1">
-            <h2 className="text-[24px] font-bold leading-tight">{ref!.title}</h2>
-            {ref!.author && <p className="text-[14px] text-muted">by {ref!.author}</p>}
+            <h2 className="text-[24px] font-bold leading-tight">{ref.title}</h2>
+            {ref.author && <p className="text-[14px] text-muted">by {ref.author}</p>}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {ref!.downloads !== undefined && <Badge><Download className="size-3" /> {compact(ref!.downloads)}</Badge>}
-              {ref!.follows !== undefined && <Badge><Heart className="size-3" /> {compact(ref!.follows)}</Badge>}
+              {ref.downloads !== undefined && <Badge><Download className="size-3" /> {compact(ref.downloads)}</Badge>}
+              {ref.follows !== undefined && <Badge><Heart className="size-3" /> {compact(ref.follows)}</Badge>}
               {p?.client_side && p.client_side !== "unsupported" && <Badge><Monitor className="size-3" /> Client</Badge>}
               {p?.server_side && p.server_side !== "unsupported" && <Badge><ServerIcon className="size-3" /> Server</Badge>}
               {p?.license && <Badge>{p.license.name || p.license.id}</Badge>}
@@ -156,9 +159,16 @@ function DrawerBody() {
         <div className="flex items-end gap-3">
           <div className="min-w-0 flex-1">{installTargetUi}</div>
           {isModrinth ? (
-            <Button variant="primary" size="lg" icon={Download} loading={busy} disabled={!canInstall} onClick={install}>
-              {category === "modpacks" ? "Install pack" : "Install"}
-            </Button>
+            alreadyIn ? (
+              <div className="flex flex-col items-end gap-1">
+                <Button variant="secondary" size="lg" icon={Check} disabled>Installed</Button>
+                <button type="button" onClick={install} disabled={busy} className="text-[12px] text-muted underline-offset-2 hover:text-text hover:underline">Reinstall / update</button>
+              </div>
+            ) : (
+              <Button variant="primary" size="lg" className="shine" icon={Download} loading={busy} disabled={!canInstall} onClick={install}>
+                {category === "modpacks" ? "Install pack" : "Install"}
+              </Button>
+            )
           ) : (
             <Button variant="secondary" icon={ExternalLink} onClick={() => open(pageUrl)}>Open on CurseForge</Button>
           )}
@@ -184,7 +194,7 @@ function DrawerBody() {
               <>
                 <div className="mb-5 rounded-card border border-copper/25 bg-copper/8 p-4">
                   <p className="text-[13px] font-medium text-copper">In short</p>
-                  <p className="mt-1 text-[15px]">{ref!.description || p?.description}</p>
+                  <p className="mt-1 text-[15px]">{ref.description || p?.description}</p>
                 </div>
                 {projectQ.isLoading && isModrinth ? (
                   <div className="space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-4" />)}</div>

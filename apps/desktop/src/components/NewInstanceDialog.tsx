@@ -1,11 +1,12 @@
 import { motion } from "motion/react";
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, Gauge, Keyboard, Plus, Sparkles } from "lucide-react";
+import { Check, Gauge, Keyboard, Layers3, Plus, Sparkles } from "lucide-react";
 import { api, type Channel, type HookReport, type Loader } from "../lib/ipc";
 import { channelName, loaderName } from "../lib/format";
-import { useProfiles, useVersions } from "../lib/queries";
+import { useProfiles, useVersions, useWorldPacks } from "../lib/queries";
 import { useApp } from "../state";
+import { applyWorldPack, summarise } from "../lib/worldpacks";
 import { Button, Field, Modal, Toggle, inputClass } from "./ui";
 
 const CHANNELS: Channel[] = ["release", "snapshot", "pre-release", "release-candidate"];
@@ -28,12 +29,16 @@ export function NewInstanceDialog() {
   const [perf, setPerf] = useState(true);
   const [overlay, setOverlay] = useState(true);
   const [profile, setProfile] = useState<string>("");
+  const packs = useWorldPacks();
+  const [packId, setPackId] = useState("");
+  const [packNote, setPackNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<{ id: string; reports: HookReport[] } | null>(null);
 
   useEffect(() => {
     if (!newInstanceOpen) return;
     setResult(null);
+    setPackNote(null);
     setName("");
     setChannels(new Set(appearance.showSnapshots ? ["release", "snapshot"] : ["release"]));
     setProfile(profiles.data?.defaultProfile ?? "");
@@ -51,7 +56,15 @@ export function NewInstanceDialog() {
   const create = async () => {
     setBusy(true);
     try {
-      const res = await api.createInstance({ name: name.trim() || `Minecraft ${version}`, gameVersion: version, loader, performanceBundle: perf && loader !== "vanilla", overlay, memoryMb: settings?.defaultMemoryMb ?? undefined, gameProfile: profile || null });
+      const pack = packs.data?.find((p) => p.id === packId);
+      const res = await api.createInstance({ name: name.trim() || `Minecraft ${version}`, gameVersion: version, loader, performanceBundle: perf && loader !== "vanilla", overlay, memoryMb: settings?.defaultMemoryMb ?? undefined, gameProfile: profile || pack?.gameProfile || null });
+      if (pack) {
+        try {
+          setPackNote(`“${pack.name}”: ${summarise(await applyWorldPack(pack, res.instance))}`);
+        } catch (e) {
+          setPackNote(`“${pack.name}” couldn't be added: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
       setResult({ id: res.instance.id, reports: res.reports });
       await refresh();
     } catch (e) {
@@ -79,13 +92,14 @@ export function NewInstanceDialog() {
             </ul>
           </>
         )}
+        {packNote && <p className="mt-3 flex items-start gap-1.5 text-[13px] text-text"><Layers3 className="mt-0.5 size-4 shrink-0 text-copper" /> {packNote}</p>}
         {notes.map((n) => <p key={n} className="mt-3 text-[13px] text-gold">{n}</p>)}
       </Modal>
     );
   }
 
   return (
-    <Modal open={newInstanceOpen} onClose={close} title="New instance" footer={<><Button onClick={close}>Cancel</Button><Button variant="primary" icon={Plus} loading={busy} disabled={!version} onClick={create}>Create instance</Button></>}>
+    <Modal open={newInstanceOpen} onClose={close} title="New instance" footer={<><Button onClick={close}>Cancel</Button><Button variant="primary" className="shine" icon={Plus} loading={busy} disabled={!version} onClick={create}>Create instance</Button></>}>
       <div className="flex flex-col gap-5">
         <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Minecraft ${version}`} className={inputClass} autoFocus /></Field>
         <div>
@@ -114,6 +128,14 @@ export function NewInstanceDialog() {
             {(profiles.data?.profiles ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
+        {!!packs.data?.length && (
+          <Field label="World pack (optional)" hint="Adds your saved mix of mods, resource packs, data packs and shaders, matched to this version.">
+            <select value={packId} onChange={(e) => setPackId(e.target.value)} className={inputClass}>
+              <option value="">None</option>
+              {packs.data.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.items.length} items)</option>)}
+            </select>
+          </Field>
+        )}
         <div className="space-y-4 rounded-card bg-slate-raised/50 p-4">
           <Toggle checked={perf && loader !== "vanilla"} disabled={loader === "vanilla"} onChange={setPerf} label="Performance stack" detail={<span className="inline-flex items-center gap-1"><Gauge className="size-3.5" /> Sodium, Lithium, FerriteCore, ImmediatelyFast, Entity Culling and more.</span>} />
           <Toggle checked={overlay} onChange={setOverlay} label="Ember in-game menu" detail={<span className="inline-flex items-center gap-1"><Keyboard className="size-3.5" /> Right Shift in game: HUD, zoom, fullbright, 50+ tweaks.</span>} />

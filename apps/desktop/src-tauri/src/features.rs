@@ -1,6 +1,6 @@
 //! IPC commands for instances' content, profiles, favorites, modpacks and dedicated servers.
 //! As in commands.rs, all input from the webview is validated before touching disk.
-use crate::state::{AppState, RunningServer};
+use crate::state::{AppState, RunningServer, Sample, ServerLive};
 use launcher_core::content::{self, ContentFile, Favorite, Screenshot, World};
 use launcher_core::download::{download_all, DownloadJob, Progress};
 use launcher_core::instance::{InstanceConfig, InstancePatch};
@@ -241,28 +241,123 @@ pub async fn server_start(app: AppHandle, state: State<'_, AppState>, id: String
     }
     let mut child = cmd.spawn()?;
     let stdin = child.stdin.take().ok_or_else(|| Error::Other("no stdin".into()))?;
-    state.running_servers.lock().await.insert(id.clone(), RunningServer { stdin, started: std::time::Instant::now() });
+    let pid = child.id();
+    let live = Arc::new(std::sync::Mutex::new(ServerLive { port: cfg.port, ..Default::default() }));
+    state.running_servers.lock().await.insert(id.clone(), RunningServer { stdin, started: std::time::Instant::now(), live: live.clone() });
 
     for stream in [child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Send + Unpin>), child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Send + Unpin>)] {
         let Some(stream) = stream else { continue };
         let app = app.clone();
         let id = id.clone();
+        let live = live.clone();
         tokio::spawn(async move {
             let mut lines = BufReader::new(stream).lines();
             while let Ok(Some(line)) = lines.next_line().await {
+                if let Ok(mut l) = live.lock() {
+                    l.on_line(&line);
+                }
                 let _ = app.emit("server-log", ServerLog { server_id: id.clone(), line });
             }
         });
     }
+
+    // CPU / memory / players every 2 seconds, for the dashboard charts.
+    if let Some(pid) = pid {
+        let live = live.clone();
+        tokio::spawn(async move {
+            use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
+            let pid = Pid::from_u32(pid);
+            let mut sys = System::new();
+            let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f32;
+            let start = std::time::Instant::now();
+            loop {
+                sys.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, ProcessRefreshKind::nothing().with_cpu().with_memory());
+                let (cpu, mem) = sys.process(pid).map(|p| (p.cpu_usage() / cores, p.memory() / 1_048_576)).unwrap_or((0.0, 0));
+                {
+                    let Ok(mut l) = live.lock() else { break };
+                    if l.exited {
+                        break;
+                    }
+                    if l.samples.len() >= ServerLive::MAX_SAMPLES {
+                        l.samples.pop_front();
+                    }
+                    let players = l.players.len() as u32;
+                    l.samples.push_back(Sample { t: start.elapsed().as_secs(), cpu: cpu.clamp(0.0, 100.0), memory_mb: mem, players });
+                }
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        });
+    }
+
+    // Automatic network setup: forward the port on the router (UPnP) and find the public address.
+    let auto_net = cfg.auto_network;
+    {
+        let live = live.clone();
+        let client = state.client.clone();
+        let app = app.clone();
+        let id = id.clone();
+        let port = cfg.port;
+        tokio::spawn(async move {
+            if let Ok(mut l) = live.lock() {
+                l.network = crate::state::NetworkStatus { checking: true, lan_ip: lan_ip(), ..Default::default() };
+            }
+            let (forward, public) = if auto_net {
+                tokio::join!(launcher_core::net::open_port(port), launcher_core::net::public_ip(&client))
+            } else {
+                (Err(Error::Other("automatic setup is off for this server".into())), launcher_core::net::public_ip(&client).await)
+            };
+            let public = forward.as_ref().ok().and_then(|f| f.external_ip.clone()).filter(|ip| !launcher_core::net::is_shared_address(ip)).or(public);
+            let shared = forward.as_ref().ok().and_then(|f| f.external_ip.as_deref()).map(launcher_core::net::is_shared_address).unwrap_or(false);
+            let msg = match (&forward, &public) {
+                (Ok(_), Some(ip)) if !shared => format!("[Ember] Router set up automatically. Friends can join at {ip}:{port}"),
+                (Ok(_), _) if shared => "[Ember] Your internet provider shares one public address between homes, so direct joins can't work. Use the Share tab (playit.gg) instead.".into(),
+                (Err(e), _) => format!("[Ember] Couldn't set up the router automatically ({e}). Same-network players can join; see the Share tab for others."),
+                _ => String::new(),
+            };
+            if let Ok(mut l) = live.lock() {
+                l.network.checking = false;
+                l.network.public_ip = public;
+                l.network.upnp = forward.is_ok();
+                l.network.upnp_error = forward.err().map(|e| e.to_string());
+                l.network.shared_ip = shared;
+            }
+            if !msg.is_empty() {
+                let _ = app.emit("server-log", ServerLog { server_id: id, line: msg });
+            }
+        });
+    }
+
     let exit_app = app.clone();
     tokio::spawn(async move {
         let code = child.wait().await.ok().and_then(|s| s.code());
+        let mut opened = false;
+        if let Ok(mut l) = live.lock() {
+            l.exited = true;
+            opened = l.network.upnp;
+        }
         if let Some(state) = tauri::Manager::try_state::<AppState>(&exit_app) {
             state.running_servers.lock().await.remove(&id);
+        }
+        if opened {
+            let _ = launcher_core::net::close_port(live.lock().map(|l| l.port).unwrap_or(25565)).await;
         }
         let _ = exit_app.emit("server-exit", serde_json::json!({ "serverId": id, "code": code }));
     });
     Ok(())
+}
+
+/// Dashboard data for a running server (players, charts, network). `None` when stopped.
+#[tauri::command]
+pub async fn server_live(state: State<'_, AppState>, id: String) -> Result<Option<ServerLive>> {
+    let running = state.running_servers.lock().await;
+    Ok(running.get(&id).and_then(|r| r.live.lock().ok().map(|l| l.clone())))
+}
+
+/// The last console lines (so the console isn't empty when you come back to the page).
+#[tauri::command]
+pub async fn server_log(state: State<'_, AppState>, id: String) -> Result<Vec<String>> {
+    let running = state.running_servers.lock().await;
+    Ok(running.get(&id).and_then(|r| r.live.lock().ok().map(|l| l.log.iter().cloned().collect())).unwrap_or_default())
 }
 
 /// Send a console command (without the leading slash), e.g. "op Steve".
@@ -340,4 +435,29 @@ pub struct NetworkInfo {
 #[tauri::command]
 pub async fn network_info() -> Result<NetworkInfo> {
     Ok(NetworkInfo { lan_ip: lan_ip() })
+}
+
+// ------------------------------------------------------------------ world packs
+
+#[tauri::command]
+pub async fn world_packs_list(state: State<'_, AppState>) -> Result<Vec<launcher_core::world_packs::WorldPack>> {
+    Ok(launcher_core::world_packs::load(&state.paths).await)
+}
+
+#[tauri::command]
+pub async fn world_packs_save(state: State<'_, AppState>, packs: Vec<launcher_core::world_packs::WorldPack>) -> Result<()> {
+    launcher_core::world_packs::save(&state.paths, &packs).await
+}
+
+/// Switch on resource packs / a shader the next time this instance starts.
+#[tauri::command]
+pub async fn world_pack_activate(state: State<'_, AppState>, instance_id: String, activation: launcher_core::world_packs::Activation) -> Result<()> {
+    let inst = state.instances.load(&instance_id).await?;
+    launcher_core::world_packs::queue_activation(&state.paths.instance(&inst.id), activation).await
+}
+
+#[tauri::command]
+pub async fn instance_shader_state(state: State<'_, AppState>, instance_id: String) -> Result<launcher_core::world_packs::ShaderState> {
+    let inst = state.instances.load(&instance_id).await?;
+    Ok(launcher_core::world_packs::shader_state(&state.paths.instance(&inst.id)).await)
 }

@@ -104,26 +104,43 @@ export function Tabs<T extends string>({ tabs, value, onChange, className = "" }
   );
 }
 
+/** The bare on/off switch. Fixed 44×24 box, so it lines up wherever it's placed. */
+export function Switch({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={(e) => {
+        e.stopPropagation();
+        click();
+        onChange(!checked);
+      }}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-copper disabled:opacity-50 ${checked ? "bg-copper" : "bg-slate-line"}`}
+    >
+      <motion.span
+        aria-hidden
+        animate={{ x: checked ? 20 : 0 }}
+        transition={{ type: "spring", stiffness: 600, damping: 34 }}
+        className="block size-5 rounded-full bg-white shadow"
+      />
+    </button>
+  );
+}
+
+/** A labelled setting row with a switch on the right. */
 export function Toggle({ checked, onChange, label, detail, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; detail?: ReactNode; disabled?: boolean }) {
   return (
-    <label className={`flex cursor-pointer items-start justify-between gap-4 ${disabled ? "pointer-events-none opacity-50" : ""}`}>
-      <span className="min-w-0">
+    <div className={`flex items-start justify-between gap-4 ${disabled ? "opacity-50" : ""}`}>
+      <span className="min-w-0 cursor-pointer" onClick={() => !disabled && (click(), onChange(!checked))}>
         <span className="block text-[14px] font-medium">{label}</span>
         {detail && <span className="block text-[13px] text-muted">{detail}</span>}
       </span>
-      <input
-        type="checkbox"
-        className="peer sr-only"
-        checked={checked}
-        onChange={(e) => {
-          click();
-          onChange(e.target.checked);
-        }}
-      />
-      <span aria-hidden className={`relative mt-0.5 flex h-6 w-11 shrink-0 items-center rounded-full p-0.5 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-copper ${checked ? "bg-copper" : "bg-slate-line"}`}>
-        <motion.span layout transition={{ type: "spring", stiffness: 600, damping: 32 }} className={`size-5 rounded-full bg-white shadow ${checked ? "ml-auto" : ""}`} />
-      </span>
-    </label>
+      <span className="mt-0.5"><Switch checked={checked} onChange={onChange} label={label} disabled={disabled} /></span>
+    </div>
   );
 }
 
@@ -229,9 +246,9 @@ export function Modal({ open, onClose, title, children, width = "w-[600px]", foo
             role="dialog"
             aria-modal="true"
             aria-label={title}
-            initial={{ opacity: 0, scale: 0.94, y: 16, filter: "blur(6px)" }}
-            animate={{ opacity: 1, scale: 1, y: 0, filter: "blur(0px)" }}
-            exit={{ opacity: 0, scale: 0.96, y: 10, filter: "blur(4px)" }}
+            initial={{ opacity: 0, scale: 0.96, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 8, transition: { duration: 0.12 } }}
             transition={{ type: "spring", stiffness: 380, damping: 30 }}
             className={`glass glass-strong relative flex max-h-[88vh] ${width} max-w-full flex-col rounded-panel`}
           >

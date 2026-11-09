@@ -76,7 +76,7 @@ export async function installProject(category: ContentCategory, project: Project
 }
 
 /** Shader packs need Iris (Fabric/Quilt/NeoForge). Add it if the instance doesn't have it. */
-async function ensureIris(inst: Instance): Promise<string> {
+export async function ensureIris(inst: Instance): Promise<string> {
   if (inst.loader === "vanilla") return " Note: shaders need a mod loader; this instance is vanilla.";
   const mods = await api.listContent(inst.id, "mods").catch(() => []);
   if (mods.some((m) => /iris|oculus/i.test(`${m.name ?? ""} ${m.fileName}`))) return "";

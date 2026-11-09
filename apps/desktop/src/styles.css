@@ -139,17 +139,17 @@ textarea,
 }
 
 /* ---------------------------------------------------------------- interactive feedback */
-/* Every pressable thing lifts, glows and catches a light sweep on hover. */
+/* Pressables brighten and pop up a touch on hover. The light sweep is reserved for the few
+   key actions marked `.shine` (Play, Install, Create instance) so it stays special. */
 .press {
   position: relative;
   overflow: hidden;
   transition:
-    transform calc(180ms * var(--motion)) cubic-bezier(0.2, 0.8, 0.2, 1),
-    box-shadow calc(220ms * var(--motion)) ease,
-    background-color calc(160ms * var(--motion)) ease,
-    border-color calc(160ms * var(--motion)) ease,
-    color calc(160ms * var(--motion)) ease;
-  will-change: transform;
+    transform calc(160ms * var(--motion)) cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow calc(200ms * var(--motion)) ease,
+    background-color calc(140ms * var(--motion)) ease,
+    border-color calc(140ms * var(--motion)) ease,
+    color calc(140ms * var(--motion)) ease;
 }
 .press:hover:not(:disabled) {
   transform: translateY(-1px);
@@ -157,7 +157,7 @@ textarea,
 .press:active:not(:disabled) {
   transform: translateY(0) scale(0.97);
 }
-.press::after {
+.shine::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -165,7 +165,7 @@ textarea,
   background: linear-gradient(110deg, transparent 30%, color-mix(in oklab, white 22%, transparent) 50%, transparent 70%);
   transform: translateX(-120%);
 }
-.press:hover:not(:disabled)::after {
+.shine:hover:not(:disabled)::after {
   transform: translateX(120%);
   transition: transform calc(700ms * var(--motion)) ease;
 }
@@ -189,19 +189,52 @@ textarea,
 /* ---------------------------------------------------------------- backgrounds */
 .bg-aurora {
   position: absolute;
-  inset: -20%;
-  filter: blur(70px);
-  opacity: 0.55;
+  inset: -25%;
+  filter: blur(60px);
+  opacity: 0.75;
+  animation: aurora-turn calc(90s / max(var(--motion), 0.01)) linear infinite;
 }
 .bg-aurora span {
   position: absolute;
   border-radius: 9999px;
-  animation: drift calc(28s / max(var(--motion), 0.01)) ease-in-out infinite alternate;
+  mix-blend-mode: screen;
+  animation: drift-a calc(17s / max(var(--motion), 0.01)) ease-in-out infinite alternate;
 }
-@keyframes drift {
+.bg-aurora span:nth-child(2) { animation-name: drift-b; animation-duration: calc(21s / max(var(--motion), 0.01)); }
+.bg-aurora span:nth-child(3) { animation-name: drift-c; animation-duration: calc(25s / max(var(--motion), 0.01)); }
+.bg-aurora span:nth-child(4) { animation-name: drift-b; animation-duration: calc(14s / max(var(--motion), 0.01)); animation-direction: alternate-reverse; }
+@keyframes aurora-turn { to { transform: rotate(360deg); } }
+@keyframes drift-a {
   0% { transform: translate3d(0, 0, 0) scale(1); }
-  50% { transform: translate3d(6%, -4%, 0) scale(1.12); }
-  100% { transform: translate3d(-5%, 5%, 0) scale(0.95); }
+  50% { transform: translate3d(22%, 14%, 0) scale(1.25); }
+  100% { transform: translate3d(-12%, 26%, 0) scale(0.9); }
+}
+@keyframes drift-b {
+  0% { transform: translate3d(0, 0, 0) scale(1.1); }
+  50% { transform: translate3d(-26%, -10%, 0) scale(0.85); }
+  100% { transform: translate3d(-8%, 18%, 0) scale(1.2); }
+}
+@keyframes drift-c {
+  0% { transform: translate3d(0, 0, 0) scale(0.95); }
+  50% { transform: translate3d(18%, -24%, 0) scale(1.2); }
+  100% { transform: translate3d(28%, 6%, 0) scale(1); }
+}
+/* Rising pixel embers. */
+.ember-particles i {
+  position: absolute;
+  bottom: -12px;
+  display: block;
+  background: var(--accent);
+  box-shadow: 0 0 10px 2px color-mix(in oklab, var(--accent) 60%, transparent);
+  opacity: 0;
+  animation: ember-rise calc(var(--d) / max(var(--motion), 0.01)) linear infinite;
+  animation-delay: var(--delay);
+}
+@keyframes ember-rise {
+  0% { transform: translate3d(0, 0, 0) rotate(0deg); opacity: 0; }
+  10% { opacity: var(--o); }
+  60% { transform: translate3d(var(--sway), -60vh, 0) rotate(160deg); opacity: var(--o); }
+  100% { transform: translate3d(calc(var(--sway) * -0.5), -105vh, 0) rotate(300deg); opacity: 0; }
 }
 .block-grid {
   background-image:
@@ -257,8 +290,10 @@ textarea,
   transition-duration: 0.01ms !important;
 }
 @media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="full"]) .bg-aurora,
   :root:not([data-motion="full"]) .bg-aurora span,
-  :root:not([data-motion="full"]) .press::after { animation: none; transition: none; }
+  :root:not([data-motion="full"]) .ember-particles i,
+  :root:not([data-motion="full"]) .shine::after { animation: none; transition: none; }
 }
 
 /* range slider thumb */

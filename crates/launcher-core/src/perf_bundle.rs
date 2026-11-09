@@ -39,8 +39,7 @@ pub const BUNDLE: &[BundleMod] = &[
     BundleMod { slug: "modernfix", purpose: "Faster launch, lower memory, bug fixes", loaders: &[Fabric, Quilt, NeoForge] },
     BundleMod { slug: "dynamic-fps", purpose: "Throttle FPS when the window is unfocused/minimised", loaders: &[Fabric, Quilt, NeoForge] },
     BundleMod { slug: "krypton", purpose: "Networking stack optimisations", loaders: &[Fabric, Quilt] },
-    // Base library for Fabric mods and the Ember overlay.
-    BundleMod { slug: "fabric-api", purpose: "Required library for Fabric mods and the Ember overlay", loaders: &[Fabric, Quilt] },
+    // Fabric API is added separately with the other essentials (see ESSENTIALS).
 ];
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -95,7 +94,15 @@ impl InstanceHook for PerformanceBundleHook {
 
     async fn after_create(&self, ctx: &HookContext, cfg: &InstanceConfig) -> Result<HookReport> {
         let mut report = HookReport { hook: self.name().into(), ..Default::default() };
+        // Fabric API, Cloth Config and Mod Menu go into every Fabric/Quilt instance, bundle or not.
+        match ensure_essentials(&ctx.client, &ctx.instance_dir, cfg).await {
+            Ok(added) => report.installed.extend(added),
+            Err(e) => report.warnings.push(format!("essentials: {e}")),
+        }
         if !cfg.performance_bundle {
+            if cfg.overlay {
+                install_overlay(ctx, cfg, &mut report).await?;
+            }
             return Ok(report);
         }
         if cfg.loader == Loader::Vanilla {
@@ -218,6 +225,71 @@ pub async fn resolve_bundle(client: &reqwest::Client, game_version: &str, loader
     Ok(planned)
 }
 
+/// Libraries almost every Fabric mod needs. `always` = re-added if it goes missing (things
+/// break without it); otherwise installed once per game version, so removing it sticks.
+pub const ESSENTIALS: &[(&str, &str, bool)] = &[
+    ("fabric-api", "Fabric API: the base library nearly every Fabric mod needs", true),
+    ("cloth-config", "Cloth Config: the settings screens many mods use", false),
+    ("modmenu", "Mod Menu: a Mods button to open each mod's settings", false),
+];
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EssentialsLock {
+    /// slug -> game version it was installed for
+    installed: HashMap<String, String>,
+}
+
+/// True if a jar in `mods/` (enabled or disabled) looks like this project.
+pub(crate) fn has_mod(names: &[String], slug: &str) -> bool {
+    let key = slug.replace('-', "");
+    names.iter().any(|n| {
+        let n = n.to_ascii_lowercase().replace(['-', '_', ' '], "");
+        n.starts_with(&key) || (slug == "cloth-config" && n.starts_with("clothconfig"))
+    })
+}
+
+/// Make sure a Fabric/Quilt instance has the essential libraries. Returns what was added.
+/// Network failures are returned as errors; callers treat them as warnings.
+pub async fn ensure_essentials(client: &reqwest::Client, instance_dir: &std::path::Path, cfg: &InstanceConfig) -> Result<Vec<String>> {
+    if !matches!(cfg.loader, Loader::Fabric | Loader::Quilt) {
+        return Ok(vec![]);
+    }
+    let mods_dir = instance_dir.join("mods");
+    tokio::fs::create_dir_all(&mods_dir).await?;
+    let mut names = Vec::new();
+    let mut rd = tokio::fs::read_dir(&mods_dir).await?;
+    while let Some(e) = rd.next_entry().await? {
+        names.push(e.file_name().to_string_lossy().into_owned());
+    }
+    let lock_path = instance_dir.join(".ember").join("essentials.json");
+    let mut lock: EssentialsLock = tokio::fs::read(&lock_path).await.ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+
+    let wanted: Vec<&(&str, &str, bool)> = ESSENTIALS
+        .iter()
+        .filter(|(slug, _, always)| !has_mod(&names, slug) && (*always || lock.installed.get(*slug) != Some(&cfg.game_version)))
+        .collect();
+    if wanted.is_empty() {
+        return Ok(vec![]);
+    }
+    let loaders = cfg.loader.modrinth_names();
+    let gv = [cfg.game_version.as_str()];
+    let found = futures::future::join_all(wanted.iter().map(|(slug, _, _)| modrinth::project_versions(client, slug, loaders, &gv))).await;
+    let mut jobs = Vec::new();
+    let mut added = Vec::new();
+    for ((slug, purpose, _), res) in wanted.iter().zip(found) {
+        let Some(v) = modrinth::best(res?) else { continue };
+        let Some(f) = v.primary_file() else { continue };
+        jobs.push(DownloadJob { url: f.url.clone(), dest: mods_dir.join(&f.filename), sha1: Some(f.hashes.sha1.clone()), size: Some(f.size) });
+        lock.installed.insert((*slug).to_string(), cfg.game_version.clone());
+        added.push(format!("{purpose} ({})", f.filename));
+    }
+    download_all(client, jobs, 4, None).await?;
+    tokio::fs::create_dir_all(lock_path.parent().unwrap()).await?;
+    tokio::fs::write(&lock_path, serde_json::to_vec_pretty(&lock)?).await?;
+    Ok(added)
+}
+
 /// The overlay is built per Minecraft version (see mods/ember-overlay) and shipped as a
 /// launcher resource: resources/overlay/ember-overlay-<mc>.jar
 async fn install_overlay(ctx: &HookContext, cfg: &InstanceConfig, report: &mut HookReport) -> Result<()> {
@@ -234,4 +306,18 @@ async fn install_overlay(ctx: &HookContext, cfg: &InstanceConfig, report: &mut H
     tokio::fs::copy(&src, &dest).await?;
     report.installed.push("ember-overlay (in-game menu: Right Shift)".into());
     Ok(())
+}
+
+#[cfg(test)]
+mod essentials_tests {
+    use super::has_mod;
+
+    #[test]
+    fn recognises_essential_jars() {
+        let names = vec!["fabric-api-0.165.2+26.3.jar".to_string(), "cloth-config-21.11.153-fabric.jar.disabled".into(), "ModMenu-17.0.0.jar".into()];
+        assert!(has_mod(&names, "fabric-api"));
+        assert!(has_mod(&names, "cloth-config"));
+        assert!(has_mod(&names, "modmenu"));
+        assert!(!has_mod(&["sodium.jar".to_string()], "fabric-api"));
+    }
 }

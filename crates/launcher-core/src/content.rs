@@ -35,6 +35,8 @@ pub struct World {
     pub modified: i64,
     pub size_mb: f64,
     pub icon: Option<String>,
+    /// From level.dat; any of these may be missing on unusual worlds.
+    pub info: crate::nbt::LevelInfo,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -216,7 +218,8 @@ pub async fn worlds(paths: &LauncherPaths, instance: &str) -> Result<Vec<World>>
                 let p = e.path();
                 let modified = std::fs::metadata(p.join("level.dat")).map(|m| mtime(&m)).unwrap_or(0);
                 let icon = std::fs::read(p.join("icon.png")).ok().filter(|b| b.len() < 512 * 1024).map(|b| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(b)));
-                World { folder: e.file_name().to_string_lossy().to_string(), modified, size_mb: dir_size(&p) as f64 / 1_048_576.0, icon }
+                let info = std::fs::read(p.join("level.dat")).ok().map(|b| crate::nbt::level_info(&b)).unwrap_or_default();
+                World { folder: e.file_name().to_string_lossy().to_string(), modified, size_mb: dir_size(&p) as f64 / 1_048_576.0, icon, info }
             })
             .collect();
         out.sort_by_key(|w| std::cmp::Reverse(w.modified));

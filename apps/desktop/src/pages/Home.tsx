@@ -37,7 +37,7 @@ export function PlayButton({ instance, big }: { instance: Instance; big?: boolea
       whileTap={{ scale: 0.96 }}
       onClick={() => (running ? api.stop(instance.id).catch((e) => toast({ title: "Couldn't stop", body: String(e), tone: "error" })) : !s && play(instance))}
       disabled={!!s && !running}
-      className={`press press-accent relative flex items-center gap-2 overflow-hidden rounded-card font-bold ${running ? "bg-slate-raised text-text" : "bg-copper text-on-accent"} ${big ? "px-8 py-3.5 text-[17px]" : "px-4 py-2 text-[14px]"}`}
+      className={`press press-accent ${running ? "" : "shine"} relative flex items-center gap-2 overflow-hidden rounded-card font-bold ${running ? "bg-slate-raised text-text" : "bg-copper text-on-accent"} ${big ? "px-8 py-3.5 text-[17px]" : "px-4 py-2 text-[14px]"}`}
     >
       {s && !running && <motion.span className="absolute inset-y-0 left-0 bg-white/20" animate={{ width: `${pct * 100}%` }} />}
       {running ? <Square className={big ? "size-5" : "size-4"} fill="currentColor" /> : <Play className={big ? "size-5" : "size-4"} fill="currentColor" />}

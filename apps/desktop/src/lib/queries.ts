@@ -54,9 +54,45 @@ export async function bestVersionFor(projectId: string, gameVersion: string, loa
   return pickBestVersion(await modrinth.projectVersions(projectId, loaders, [gameVersion]));
 }
 
+export const useWorldPacks = () => useQuery({ queryKey: ["worldPacks"], queryFn: api.worldPacks, staleTime: Infinity });
 export const useFavorites = () => useQuery({ queryKey: ["favorites"], queryFn: api.favorites, staleTime: Infinity });
 export const useProfiles = () => useQuery({ queryKey: ["profiles"], queryFn: api.profiles, staleTime: Infinity });
 export const useServers = () => useQuery({ queryKey: ["servers"], queryFn: api.servers, staleTime: 0, refetchInterval: 5000 });
 export const useVersions = () => useQuery({ queryKey: ["gameVersions"], queryFn: api.listVersions, staleTime: 60 * 60_000 });
 export const useSystemInfo = () => useQuery({ queryKey: ["system"], queryFn: api.systemInfo, staleTime: Infinity });
 export const useContent = (instanceId: string, dir: string) => useQuery({ queryKey: ["content", instanceId, dir], queryFn: () => api.listContent(instanceId, dir), staleTime: 0 });
+
+const normName = (s: string) => s.toLowerCase().replace(/\.(jar|zip)(\.disabled)?$/, "").replace(/[^a-z0-9]/g, "");
+
+export interface InstalledSet {
+  ids: Set<string>;
+  names: Set<string>;
+}
+
+/**
+ * What's already in an instance (mods, resource packs, shaders), as Modrinth project ids
+ * (looked up from file hashes in one request) plus normalised names for files that aren't
+ * on Modrinth. Keyed under ["content", id] so every content refresh also refreshes this.
+ */
+export function useInstalled(instanceId: string | undefined) {
+  return useQuery({
+    queryKey: ["content", instanceId, "installed"],
+    enabled: !!instanceId,
+    staleTime: 60_000,
+    queryFn: () => loadInstalled(instanceId!),
+  });
+}
+
+export async function loadInstalled(instanceId: string, dirs = ["mods", "resourcepacks", "shaderpacks"]): Promise<InstalledSet> {
+  const lists = await Promise.all(dirs.map((d) => api.listContent(instanceId, d).catch(() => [])));
+  const files = lists.flat();
+  const hashes = files.map((f) => f.sha1).filter(Boolean);
+  const byHash: Record<string, { project_id: string }> = hashes.length ? await modrinth.versionsFromHashes(hashes).catch(() => ({})) : {};
+  return {
+    ids: new Set(Object.values(byHash).map((v) => v.project_id)),
+    names: new Set(files.map((f) => normName(f.name ?? f.fileName))),
+  };
+}
+
+export const isInstalled = (set: InstalledSet | undefined, p: { id: string; title?: string }) =>
+  !!set && (set.ids.has(p.id) || (!!p.title && set.names.has(normName(p.title))));

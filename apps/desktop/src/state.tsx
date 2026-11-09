@@ -29,7 +29,11 @@ export interface LaunchState {
 }
 
 /** What the project drawer shows. A search hit renders instantly while details load. */
-export type ProjectRef = Pick<ContentHit, "id" | "slug" | "title" | "description" | "iconUrl" | "source"> & Partial<ContentHit> & { category?: string };
+export type ProjectRef = Pick<ContentHit, "id" | "slug" | "title" | "description" | "iconUrl" | "source"> & Partial<ContentHit> & {
+  category?: string;
+  /** Pre-select this instance as the install target. */
+  instanceId?: string;
+};
 
 interface AppCtx {
   instances: Instance[];
@@ -41,7 +45,7 @@ interface AppCtx {
   appearance: Appearance;
   setAppearance: (patch: Partial<Appearance>) => void;
   launching: Record<string, LaunchState>;
-  play: (instance: Instance, server?: string) => Promise<void>;
+  play: (instance: Instance, server?: string, world?: string) => Promise<void>;
   toasts: Toast[];
   toast: (t: Omit<Toast, "id">) => number;
   updateToast: (id: number, t: Partial<Toast>) => void;
@@ -154,10 +158,10 @@ function AppState({ children }: { children: ReactNode }) {
   }, [refresh, toast]);
 
   const play = useCallback(
-    async (instance: Instance, server?: string) => {
+    async (instance: Instance, server?: string, world?: string) => {
       setLaunching((s) => ({ ...s, [instance.id]: { stage: "preparing", done: 0, total: 1 } }));
       try {
-        await api.launch(instance.id, server);
+        await api.launch(instance.id, server, world);
       } catch (e) {
         setLaunching(({ [instance.id]: _x, ...rest }) => rest);
         const c = errorCode(e);

@@ -27,6 +27,8 @@ pub mod java;
 pub mod launch;
 pub mod modrinth;
 pub mod mrpack;
+pub mod nbt;
+pub mod net;
 pub mod neoforge;
 pub mod paths;
 pub mod perf_bundle;
@@ -36,6 +38,7 @@ pub mod server;
 pub mod settings;
 pub mod version_json;
 pub mod versions;
+pub mod world_packs;
 
 pub use chrono;
 pub use error::{Error, Result};

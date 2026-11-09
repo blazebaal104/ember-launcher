@@ -11,6 +11,79 @@ use tokio::sync::Mutex;
 pub struct RunningServer {
     pub stdin: tokio::process::ChildStdin,
     pub started: std::time::Instant,
+    /// What the dashboard shows; updated by the log reader, the sampler and the network task.
+    pub live: std::sync::Arc<std::sync::Mutex<ServerLive>>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Sample {
+    /// Seconds since start.
+    pub t: u64,
+    /// Percent of the whole CPU (all cores = 100).
+    pub cpu: f32,
+    pub memory_mb: u64,
+    pub players: u32,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NetworkStatus {
+    pub checking: bool,
+    pub lan_ip: Option<String>,
+    pub public_ip: Option<String>,
+    /// The router forwarded the port automatically (UPnP).
+    pub upnp: bool,
+    pub upnp_error: Option<String>,
+    /// The public address is shared (carrier-grade NAT): direct joins can't work.
+    pub shared_ip: bool,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerLive {
+    pub ready: bool,
+    pub port: u16,
+    pub players: Vec<String>,
+    pub samples: std::collections::VecDeque<Sample>,
+    pub lag_warnings: u32,
+    pub last_lag: Option<String>,
+    pub network: NetworkStatus,
+    #[serde(skip)]
+    pub log: std::collections::VecDeque<String>,
+    #[serde(skip)]
+    pub exited: bool,
+}
+
+impl ServerLive {
+    pub const MAX_LOG: usize = 500;
+    pub const MAX_SAMPLES: usize = 150; // 5 minutes at one sample per 2s
+
+    /// Update state from one console line.
+    pub fn on_line(&mut self, line: &str) {
+        if self.log.len() >= Self::MAX_LOG {
+            self.log.pop_front();
+        }
+        self.log.push_back(line.to_string());
+        let msg = line.split_once("]: ").map(|(_, m)| m).unwrap_or(line).trim();
+        if msg.starts_with("Done (") && msg.contains("For help") {
+            self.ready = true;
+        } else if let Some(name) = msg.strip_suffix(" joined the game").and_then(|s| s.split_whitespace().last()) {
+            if !self.players.iter().any(|p| p == name) {
+                self.players.push(name.to_string());
+            }
+        } else if let Some(name) = msg.strip_suffix(" left the game").and_then(|s| s.split_whitespace().last()) {
+            self.players.retain(|p| p != name);
+        } else if msg.starts_with("Can't keep up!") {
+            self.lag_warnings += 1;
+            self.last_lag = Some(msg.to_string());
+        } else if let Some(rest) = msg.strip_prefix("There are ").filter(|_| msg.contains("players online:")) {
+            // Reply to "list": resync the player list.
+            if let Some((_, names)) = rest.split_once("online:") {
+                self.players = names.split(',').map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).collect();
+            }
+        }
+    }
 }
 
 /// Optional build-time default Azure client id (EMBER_MSA_CLIENT_ID=... npm run build).

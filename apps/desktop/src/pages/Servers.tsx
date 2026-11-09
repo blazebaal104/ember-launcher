@@ -2,18 +2,20 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle2, Compass, Copy, ExternalLink, FolderOpen, Globe2, Play, Plus, Puzzle, Router, ScrollText, Server, Settings2, Square, Trash2, Users, Wifi } from "lucide-react";
+import { Activity, CheckCircle2, Compass, Copy, ExternalLink, FolderOpen, Globe2, Play, Plus, Puzzle, Router, ScrollText, Server, Settings2, Square, Trash2, Users, Wifi } from "lucide-react";
 import { useApp } from "../state";
 import { api, type ServerKind, type ServerView } from "../lib/ipc";
 import { useServers, useSystemInfo, useVersions } from "../lib/queries";
 import { open } from "../lib/links";
 import { Badge, Button, Empty, Field, Glass, Modal, Segmented, Skeleton, Slider, Tabs, Toggle, inputClass } from "../components/ui";
 import { Console } from "../components/Console";
+import { ServerDashboard } from "../components/ServerDashboard";
+import { transitionProps } from "../lib/appearance";
 import { instanceGradient } from "./Home";
 
 const KIND_INFO: Record<ServerKind, { label: string; text: string }> = {
-  paper: { label: "Paper", text: "Fast, and runs plugins (EssentialsX, WorldEdit, LuckPerms…). Best for most friend servers." },
-  fabric: { label: "Fabric", text: "Runs Fabric mods. Everyone joining needs the same mods." },
+  paper: { label: "Paper", text: "Highly optimised, runs plugins (EssentialsX, WorldEdit, LuckPerms…). Best for most friend servers." },
+  fabric: { label: "Fabric", text: "Runs Fabric mods. Comes with Lithium, FerriteCore, Krypton and ModernFix for speed." },
   vanilla: { label: "Vanilla", text: "Plain Minecraft, exactly as Mojang ships it." },
 };
 
@@ -138,12 +140,13 @@ function CreateServer({ open: isOpen, onClose }: { open: boolean; onClose: () =>
   );
 }
 
-type STab = "console" | "settings" | "addons" | "share";
+type STab = "dashboard" | "console" | "settings" | "addons" | "share";
 
 function ServerDetail({ id }: { id: string }) {
   const servers = useServers();
   const s = servers.data?.find((x) => x.id === id);
-  const [tab, setTab] = useState<STab>("console");
+  const [tab, setTab] = useState<STab>("dashboard");
+  const { appearance } = useApp();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { toast } = useApp();
@@ -187,13 +190,14 @@ function ServerDetail({ id }: { id: string }) {
           </div>
           <div className="flex gap-2">
             <Button icon={FolderOpen} className="bg-black/20 text-white" onClick={() => api.openServerFolder(s.id)}>Folder</Button>
-            {s.running ? <Button variant="secondary" icon={Square} onClick={stop}>Stop</Button> : <Button variant="primary" size="lg" icon={Play} loading={busy} onClick={start}>Start server</Button>}
+            {s.running ? <Button variant="secondary" icon={Square} onClick={stop}>Stop</Button> : <Button variant="primary" size="lg" className="shine" icon={Play} loading={busy} onClick={start}>Start server</Button>}
           </div>
         </div>
       </motion.section>
-      <Tabs<STab> className="glass mb-5 rounded-panel p-1.5" value={tab} onChange={setTab} tabs={[{ id: "console", label: "Console", icon: ScrollText }, { id: "settings", label: "Settings", icon: Settings2 }, { id: "addons", label: s.kind === "paper" ? "Plugins" : "Mods", icon: Puzzle }, { id: "share", label: "Invite friends", icon: Globe2 }]} />
+      <Tabs<STab> className="glass mb-5 rounded-panel p-1.5" value={tab} onChange={setTab} tabs={[{ id: "dashboard", label: "Dashboard", icon: Activity }, { id: "console", label: "Console", icon: ScrollText }, { id: "settings", label: "Settings", icon: Settings2 }, { id: "addons", label: s.kind === "paper" ? "Plugins" : "Mods", icon: Puzzle }, { id: "share", label: "Invite friends", icon: Globe2 }]} />
       <AnimatePresence mode="wait">
-        <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+        <motion.div key={tab} {...transitionProps(appearance, "tab")}>
+          {tab === "dashboard" && <ServerDashboard s={s} onStart={start} starting={busy} />}
           {tab === "console" && <Glass className="h-[58vh] p-4"><Console logKey={`server:${s.id}`} onCommand={(c) => api.serverCommand(s.id, c).catch((e) => toast({ title: "Command failed", body: String(e), tone: "error" }))} placeholder={s.running ? "Command, e.g. op YourName · whitelist add Friend · time set day" : "Start the server to send commands"} /></Glass>}
           {tab === "settings" && <ServerSettings s={s} />}
           {tab === "addons" && <Addons s={s} />}
@@ -276,6 +280,7 @@ function Share({ s }: { s: ServerView }) {
       <Glass className="p-5">
         <Globe2 className="size-6 text-copper" />
         <h3 className="mt-2 text-[16px] font-bold">Friends anywhere in the world</h3>
+        <p className="mt-1 text-[13px] text-muted">When the server starts, Ember asks your router to open port {s.port} automatically (UPnP) and shows your public address on the Dashboard. If your router doesn't allow that, use one of these:</p>
         <div className="mt-3"><Segmented value={method} onChange={setMethod} options={[{ id: "playit", label: "playit.gg (easiest)" }, { id: "router", label: "Port forwarding", icon: Router }]} /></div>
         {method === "playit" ? (
           <ol className="mt-4 list-decimal space-y-2 pl-5 text-[13px] text-muted">

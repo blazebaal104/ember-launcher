@@ -1,25 +1,63 @@
 import { AnimatePresence, motion } from "motion/react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { ArrowRightLeft, CheckCircle2, Command, Compass, Heart, Home, Info, Loader2, PanelLeftClose, PanelLeftOpen, Plus, Search, Server, Settings, X, XCircle } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, Command, Compass, Heart, Home, Info, Layers3, Loader2, PanelLeftClose, PanelLeftOpen, Plus, Search, Server, Settings, X, XCircle } from "lucide-react";
 import logoGlyph from "../assets/logo-glyph.svg";
 import { useApp } from "../state";
 import { AccountButton } from "./AccountButton";
 import { click } from "../lib/sounds";
 
 /** The animated world behind the glass. */
+/** Deterministic pseudo-random particles, so the layout is stable between renders. */
+const PARTICLES = Array.from({ length: 34 }, (_, i) => {
+  const r = (n: number) => {
+    const x = Math.sin(i * 12.9898 + n * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
+  const size = 2 + Math.round(r(1) * 4);
+  return {
+    left: `${(r(2) * 100).toFixed(2)}%`,
+    size,
+    d: `${(11 + r(3) * 16).toFixed(1)}s`,
+    delay: `${(-r(4) * 26).toFixed(1)}s`,
+    sway: `${Math.round((r(5) - 0.5) * 160)}px`,
+    o: (0.25 + r(6) * 0.55).toFixed(2),
+  };
+});
+
+function Embers({ count = PARTICLES.length }: { count?: number }) {
+  return (
+    <div className="ember-particles absolute inset-0">
+      {PARTICLES.slice(0, count).map((p, i) => (
+        <i key={i} style={{ left: p.left, width: p.size, height: p.size, ["--d" as string]: p.d, ["--delay" as string]: p.delay, ["--sway" as string]: p.sway, ["--o" as string]: p.o }} />
+      ))}
+    </div>
+  );
+}
+
 export function Backdrop() {
   const { appearance } = useApp();
+  const b = appearance.backdrop;
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden bg-slate-base">
-      {appearance.backdrop === "aurora" && (
-        <div className="bg-aurora">
-          <span style={{ left: "5%", top: "8%", width: "42vw", height: "42vw", background: "radial-gradient(circle, color-mix(in oklab, var(--accent) 55%, transparent), transparent 65%)" }} />
-          <span style={{ right: "0%", top: "30%", width: "38vw", height: "38vw", animationDelay: "-9s", background: "radial-gradient(circle, color-mix(in oklab, var(--accent) 28%, #6a5cff 30%), transparent 65%)" }} />
-          <span style={{ left: "30%", bottom: "-10%", width: "46vw", height: "40vw", animationDelay: "-17s", background: "radial-gradient(circle, color-mix(in oklab, var(--accent) 35%, #1e3a5f), transparent 65%)" }} />
-        </div>
+      {b === "aurora" && (
+        <>
+          <div className="bg-aurora">
+            <span style={{ left: "8%", top: "6%", width: "46vw", height: "46vw", background: "radial-gradient(circle, color-mix(in oklab, var(--accent) 70%, transparent), transparent 64%)" }} />
+            <span style={{ right: "4%", top: "24%", width: "40vw", height: "40vw", animationDelay: "-7s", background: "radial-gradient(circle, color-mix(in oklab, var(--accent) 30%, #6a5cff 45%), transparent 64%)" }} />
+            <span style={{ left: "28%", bottom: "-6%", width: "50vw", height: "42vw", animationDelay: "-13s", background: "radial-gradient(circle, color-mix(in oklab, var(--accent) 45%, #1e6a8f), transparent 64%)" }} />
+            <span style={{ left: "55%", top: "-8%", width: "30vw", height: "30vw", animationDelay: "-4s", background: "radial-gradient(circle, color-mix(in oklab, var(--accent) 25%, #e07cff 30%), transparent 64%)" }} />
+          </div>
+          <Embers count={18} />
+        </>
       )}
-      {appearance.backdrop === "nebula" && <div className="absolute inset-0" style={{ background: "radial-gradient(1200px 700px at 15% 0%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 60%), radial-gradient(900px 600px at 100% 100%, color-mix(in oklab, #7c4dff 22%, transparent), transparent 60%)" }} />}
-      {appearance.backdrop === "grid" && <div className="block-grid absolute inset-0" style={{ maskImage: "radial-gradient(ellipse at 30% 20%, black, transparent 75%)" }} />}
+      {b === "embers" && (
+        <>
+          <div className="absolute inset-x-0 bottom-0 h-1/2" style={{ background: "radial-gradient(ellipse at 50% 100%, color-mix(in oklab, var(--accent) 30%, transparent), transparent 70%)" }} />
+          <Embers />
+        </>
+      )}
+      {b === "nebula" && <div className="absolute inset-0" style={{ background: "radial-gradient(1200px 700px at 15% 0%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 60%), radial-gradient(900px 600px at 100% 100%, color-mix(in oklab, #7c4dff 22%, transparent), transparent 60%)" }} />}
+      {b === "grid" && <div className="block-grid absolute inset-0" style={{ maskImage: "radial-gradient(ellipse at 30% 20%, black, transparent 75%)" }} />}
       <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, transparent 60%, color-mix(in oklab, var(--base) 70%, transparent))" }} />
     </div>
   );
@@ -29,6 +67,7 @@ const NAV = [
   { to: "/", label: "Home", icon: Home, end: true },
   { to: "/discover/mods", match: "/discover", label: "Discover", icon: Compass },
   { to: "/favorites", label: "Favorites", icon: Heart },
+  { to: "/packs", label: "World packs", icon: Layers3 },
   { to: "/servers", label: "Servers", icon: Server },
   { to: "/transfer", label: "Transfer mods", icon: ArrowRightLeft },
 ];

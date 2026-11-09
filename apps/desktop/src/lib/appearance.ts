@@ -5,7 +5,9 @@
 
 export type ThemeId = "deepslate" | "midnight" | "oled" | "calcite";
 export type MotionLevel = "full" | "reduced" | "off";
-export type Backdrop = "aurora" | "grid" | "nebula" | "solid";
+export type Backdrop = "aurora" | "embers" | "grid" | "nebula" | "solid";
+export type TransitionStyle = "fade" | "slide" | "zoom" | "none";
+export type TransitionSpeed = "instant" | "fast" | "normal" | "smooth";
 export type Density = "comfortable" | "compact";
 
 export interface Appearance {
@@ -23,6 +25,9 @@ export interface Appearance {
   sounds: boolean;
   showSnapshots: boolean;
   discoverLayout: "grid" | "list";
+  /** How pages and tabs change. */
+  transition: TransitionStyle;
+  transitionSpeed: TransitionSpeed;
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -40,6 +45,8 @@ export const DEFAULT_APPEARANCE: Appearance = {
   sounds: false,
   showSnapshots: false,
   discoverLayout: "grid",
+  transition: "slide",
+  transitionSpeed: "fast",
 };
 
 /** Accent presets named after Minecraft materials. */
@@ -91,6 +98,8 @@ export function normalise(raw: unknown): Appearance {
   a.radius = Math.min(22, Math.max(2, Number(a.radius) || 12));
   a.motionSpeed = Math.min(2, Math.max(0.5, Number(a.motionSpeed) || 1));
   a.textScale = Math.min(1.2, Math.max(0.9, Number(a.textScale) || 1));
+  if (!["fade", "slide", "zoom", "none"].includes(a.transition)) a.transition = DEFAULT_APPEARANCE.transition;
+  if (!["instant", "fast", "normal", "smooth"].includes(a.transitionSpeed)) a.transitionSpeed = DEFAULT_APPEARANCE.transitionSpeed;
   if (!/^#[0-9a-f]{6}$/i.test(a.accent)) a.accent = DEFAULT_APPEARANCE.accent;
   return a;
 }
@@ -113,3 +122,35 @@ export function applyAppearance(a: Appearance) {
 
 /** Duration multiplier for JS (motion library) animations. */
 export const motionFactor = (a: Appearance) => (a.motion === "off" ? 0 : a.motion === "reduced" ? 0.5 / a.motionSpeed : 1 / a.motionSpeed);
+
+const SPEED: Record<TransitionSpeed, number> = { instant: 0, fast: 0.12, normal: 0.22, smooth: 0.4 };
+
+/**
+ * Motion props for switching pages and tabs. Only opacity and transform are animated (never
+ * filters), and transforms end at exactly "none", so text is crisp once the change settles.
+ */
+export function transitionProps(a: Appearance, depth: "page" | "tab" = "page") {
+  const style = a.motion === "off" ? "none" : a.transition;
+  const base = SPEED[a.transitionSpeed] * (depth === "tab" ? 0.85 : 1);
+  if (style === "none" || base === 0) {
+    return { initial: false as const, animate: { opacity: 1 }, exit: { opacity: 1, transition: { duration: 0 } }, transition: { duration: 0 } };
+  }
+  const d = depth === "tab" ? 6 : 12;
+  const from =
+    style === "slide" ? { opacity: 0, x: d * 1.4 } : style === "zoom" ? { opacity: 0, scale: 0.985 } : { opacity: 0 };
+  const to = style === "slide" ? { opacity: 1, x: 0 } : style === "zoom" ? { opacity: 1, scale: 1 } : { opacity: 1 };
+  const out =
+    style === "slide" ? { opacity: 0, x: -d } : style === "zoom" ? { opacity: 0, scale: 1.01 } : { opacity: 0 };
+  return {
+    initial: from,
+    animate: to,
+    exit: { ...out, transition: { duration: base * 0.6, ease: [0.4, 0, 1, 1] as const } },
+    transition: { duration: base, ease: [0.2, 0.8, 0.2, 1] as const },
+    // Drop the leftover transform once settled so the browser re-rasterises text at full sharpness.
+    transformTemplate: (latest: { x?: unknown; scale?: unknown }, generated: string) => {
+      const x = parseFloat(String(latest.x ?? 0));
+      const sc = parseFloat(String(latest.scale ?? 1));
+      return Math.abs(x) < 0.01 && Math.abs(sc - 1) < 0.0005 ? "none" : generated;
+    },
+  };
+}

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Check, Cpu, ExternalLink, Gamepad2, Info, Paintbrush, Rocket, Sparkles, User } from "lucide-react";
 import { useApp } from "../state";
-import { ACCENTS, THEMES, type Backdrop } from "../lib/appearance";
+import { ACCENTS, THEMES, transitionProps, type Backdrop } from "../lib/appearance";
 import { api } from "../lib/ipc";
 import { useProfiles, useSystemInfo } from "../lib/queries";
 import { open } from "../lib/links";
@@ -17,6 +17,7 @@ type Tab = "appearance" | "launcher" | "profiles" | "account" | "about";
 export function Settings() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get("tab") as Tab) || "appearance";
+  const { appearance } = useApp();
   return (
     <div className="mx-auto max-w-6xl px-6 pb-10 pt-2">
       <motion.h1 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-4 text-[30px] font-bold tracking-tight">Settings</motion.h1>
@@ -33,7 +34,7 @@ export function Settings() {
         ]}
       />
       <AnimatePresence mode="wait">
-        <motion.div key={tab} initial={{ opacity: 0, y: 12, filter: "blur(4px)" }} animate={{ opacity: 1, y: 0, filter: "blur(0px)" }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.22 }}>
+        <motion.div key={tab} {...transitionProps(appearance, "tab")}>
           {tab === "appearance" && <AppearanceSection />}
           {tab === "launcher" && <LauncherSection />}
           {tab === "profiles" && <ProfilesSection />}
@@ -103,9 +104,9 @@ function AppearanceSection() {
 
       <Card title="Background">
         <div className="grid grid-cols-2 gap-2">
-          {(["aurora", "nebula", "grid", "solid"] as Backdrop[]).map((b) => (
+          {(["aurora", "embers", "nebula", "grid", "solid"] as Backdrop[]).map((b) => (
             <button key={b} type="button" onClick={() => set({ backdrop: b })} className={`press rounded-card border px-3 py-3 text-left text-[14px] ${a.backdrop === b ? "border-copper bg-copper/10" : "border-slate-line hover:border-muted"}`}>
-              {b === "aurora" ? "Aurora (animated)" : b === "nebula" ? "Nebula" : b === "grid" ? "Block grid" : "Solid"}
+              {b === "aurora" ? "Aurora + embers (animated)" : b === "embers" ? "Rising embers (animated)" : b === "nebula" ? "Nebula" : b === "grid" ? "Block grid" : "Solid"}
             </button>
           ))}
         </div>
@@ -113,7 +114,15 @@ function AppearanceSection() {
 
       <Card title="Motion">
         <Segmented value={a.motion} onChange={(v) => set({ motion: v })} options={[{ id: "full", label: "Full" }, { id: "reduced", label: "Reduced" }, { id: "off", label: "Off" }]} />
-        <Slider label="Animation speed" value={a.motionSpeed} onChange={(v) => set({ motionSpeed: v })} min={0.5} max={2} step={0.1} format={(v) => (v < 0.9 ? "Relaxed" : v > 1.2 ? "Snappy" : "Normal")} />
+        <div>
+          <p className="mb-2 text-[14px] font-medium">Page & tab transition</p>
+          <Segmented value={a.transition} onChange={(v) => set({ transition: v })} options={[{ id: "slide", label: "Slide" }, { id: "fade", label: "Fade" }, { id: "zoom", label: "Zoom" }, { id: "none", label: "None" }]} />
+        </div>
+        <div>
+          <p className="mb-2 text-[14px] font-medium">Transition speed</p>
+          <Segmented value={a.transitionSpeed} onChange={(v) => set({ transitionSpeed: v })} options={[{ id: "instant", label: "Instant" }, { id: "fast", label: "Fast" }, { id: "normal", label: "Normal" }, { id: "smooth", label: "Smooth" }]} />
+        </div>
+        <Slider label="Other animations" value={a.motionSpeed} onChange={(v) => set({ motionSpeed: v })} min={0.5} max={2} step={0.1} format={(v) => (v < 0.9 ? "Relaxed" : v > 1.2 ? "Snappy" : "Normal")} />
         <Toggle checked={a.sounds} onChange={(v) => set({ sounds: v })} label="Interface sounds" detail="Soft clicks and chimes." />
       </Card>
 

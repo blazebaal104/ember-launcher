@@ -3,15 +3,18 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { ArrowUpCircle, BookOpen, Box, Camera, Clock, Compass, FilePlus2, FolderOpen, Gauge, Globe2, Image, Layers, Package, Save, ScrollText, Search, Settings2, Sparkles, Star, Trash2 } from "lucide-react";
+import { ArrowUpCircle, BookOpen, Box, Camera, Clock, Compass, FilePlus2, FolderOpen, Gauge, Layers3, Play, Plus, X, Globe2, Image, Layers, Package, Save, ScrollText, Search, Settings2, Sparkles, Star, Trash2 } from "lucide-react";
 import { mrToResolved } from "@ember/content-engine";
 import { useApp } from "../state";
-import { api, fileSrc, inTauri, type ContentFile, type Instance as Inst } from "../lib/ipc";
+import { transitionProps } from "../lib/appearance";
+import { api, fileSrc, inTauri, type ContentFile, type Instance as Inst, type World, type WorldPack } from "../lib/ipc";
 import { modrinth } from "../lib/clients";
 import { ago, loaderName } from "../lib/format";
-import { useContent, useProfiles, useSystemInfo } from "../lib/queries";
+import { useContent, useProfiles, useSystemInfo, useWorldPacks } from "../lib/queries";
+import { applyWorldPack, summarise } from "../lib/worldpacks";
 import { installProject } from "../lib/install";
-import { Badge, Button, Empty, Field, Glass, IconButton, Modal, Skeleton, Slider, Tabs, Toggle, inputClass } from "../components/ui";
+import { Badge, Button, Empty, Field, Glass, IconButton, Modal, Skeleton, Slider, Switch, Tabs, Toggle, inputClass } from "../components/ui";
+import { AddContentPanel } from "../components/AddContentPanel";
 import { Console } from "../components/Console";
 import { PlayButton, instanceGradient, playTime } from "./Home";
 
@@ -19,7 +22,7 @@ type Tab = "overview" | "content" | "worlds" | "screenshots" | "settings" | "log
 
 export function InstancePage() {
   const { id } = useParams();
-  const { instances } = useApp();
+  const { instances, appearance } = useApp();
   const inst = instances.find((i) => i.id === id);
   const [tab, setTab] = useState<Tab>("overview");
   if (!inst) return <div className="p-10"><Empty icon={Box} title="Instance not found">It may have been deleted.</Empty></div>;
@@ -32,7 +35,7 @@ export function InstancePage() {
         onChange={setTab}
         tabs={[
           { id: "overview", label: "Overview", icon: Gauge },
-          { id: "content", label: "Content", icon: Layers },
+          { id: "content", label: "Mods", icon: Layers },
           { id: "worlds", label: "Worlds", icon: Globe2 },
           { id: "screenshots", label: "Screenshots", icon: Camera },
           { id: "settings", label: "Settings", icon: Settings2 },
@@ -40,7 +43,7 @@ export function InstancePage() {
         ]}
       />
       <AnimatePresence mode="wait">
-        <motion.div key={tab} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }}>
+        <motion.div key={tab} {...transitionProps(appearance, "tab")}>
           {tab === "overview" && <Overview inst={inst} go={setTab} />}
           {tab === "content" && <Content inst={inst} />}
           {tab === "worlds" && <Worlds inst={inst} />}
@@ -136,10 +139,12 @@ function Content({ inst }: { inst: Inst }) {
   const navigate = useNavigate();
   const { toast, openProject } = useApp();
   const [filter, setFilter] = useState("");
+  const [adding, setAdding] = useState(false);
+  const category = dir === "mods" ? "mods" : dir === "shaderpacks" ? "shaders" : "resourcepacks";
   const [updates, setUpdates] = useState<Record<string, { versionId: string; number: string; file: ReturnType<typeof mrToResolved> }> | null>(null);
   const [checking, setChecking] = useState(false);
   const list = (q.data ?? []).filter((f) => !filter || `${f.name ?? ""} ${f.fileName} ${f.description ?? ""}`.toLowerCase().includes(filter.toLowerCase()));
-  const reload = () => qc.invalidateQueries({ queryKey: ["content", inst.id, dir] });
+  const reload = () => qc.invalidateQueries({ queryKey: ["content", inst.id] });
 
   const toggle = async (f: ContentFile) => {
     await api.setContentEnabled(inst.id, dir, f.fileName, !f.enabled);
@@ -201,16 +206,23 @@ function Content({ inst }: { inst: Inst }) {
 
   return (
     <div>
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Tabs<Dir> value={dir} onChange={(d) => { setDir(d); setUpdates(null); }} tabs={DIRS.map((d) => ({ ...d, count: d.id === dir ? q.data?.length : undefined }))} />
+        <Button variant="primary" className="ml-auto" icon={adding ? X : Plus} onClick={() => setAdding((a) => !a)}>{adding ? "Done adding" : `Add ${DIRS.find((d) => d.id === dir)!.label.toLowerCase()}`}</Button>
+      </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <Tabs<Dir> value={dir} onChange={(d) => { setDir(d); setUpdates(null); }} tabs={DIRS.map((d) => ({ ...d }))} />
-        <div className="relative ml-auto w-60">
+        <div className="relative min-w-48 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter" className={`${inputClass} pl-9`} />
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Filter installed ${DIRS.find((d) => d.id === dir)!.label.toLowerCase()}`} className={`${inputClass} pl-9`} />
         </div>
         <Button icon={ArrowUpCircle} loading={checking} onClick={checkUpdates}>Check updates</Button>
         <Button icon={FilePlus2} onClick={addFiles}>Add files</Button>
-        <Button variant="primary" icon={Compass} onClick={() => navigate(`/discover/${dir === "mods" ? "mods" : dir === "shaderpacks" ? "shaders" : "resourcepacks"}?instance=${inst.id}`)}>Browse</Button>
+        <PackButton inst={inst} />
+        <Button icon={Compass} onClick={() => navigate(`/discover/${category}?instance=${inst.id}`)}>Browse all</Button>
       </div>
+      <AnimatePresence initial={false}>
+        {adding && <AddContentPanel key={dir} inst={inst} category={category} onClose={() => setAdding(false)} />}
+      </AnimatePresence>
       <AnimatePresence>
         {updates && Object.keys(updates).length > 0 && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mb-4 flex items-center justify-between gap-3 overflow-hidden rounded-panel border border-copper/30 bg-copper/10 px-4 py-3 text-[14px]">
@@ -222,7 +234,7 @@ function Content({ inst }: { inst: Inst }) {
       {q.isLoading ? (
         <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
       ) : list.length === 0 ? (
-        <Empty icon={DIRS.find((d) => d.id === dir)!.icon} title={filter ? "No matches" : `No ${DIRS.find((d) => d.id === dir)!.label.toLowerCase()} yet`} action={<Button variant="primary" icon={Compass} onClick={() => navigate(`/discover/${dir === "mods" ? "mods" : dir === "shaderpacks" ? "shaders" : "resourcepacks"}?instance=${inst.id}`)}>Find some</Button>}>
+        <Empty icon={DIRS.find((d) => d.id === dir)!.icon} title={filter ? "No matches" : `No ${DIRS.find((d) => d.id === dir)!.label.toLowerCase()} yet`} action={!adding ? <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>Add some</Button> : undefined}>
           Everything here goes only into “{inst.name}”.
         </Empty>
       ) : (
@@ -243,12 +255,59 @@ function Content({ inst }: { inst: Inst }) {
                 <IconButton icon={BookOpen} label="What does it do?" onClick={() => explain(f)} />
                 <IconButton icon={Trash2} label="Remove" onClick={() => remove(f)} />
               </div>
-              <div className="w-11"><Toggle checked={f.enabled} onChange={() => toggle(f)} label="" /></div>
+              <Switch checked={f.enabled} onChange={() => toggle(f)} label={f.enabled ? "Enabled (click to turn off)" : "Disabled (click to turn on)"} />
             </motion.li>
           ))}
         </ul>
       )}
     </div>
+  );
+}
+
+/** Apply one of the user's world packs to this instance. */
+function PackButton({ inst }: { inst: Inst }) {
+  const packs = useWorldPacks();
+  const navigate = useNavigate();
+  const { toast, dismiss } = useApp();
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const apply = async (p: WorldPack) => {
+    setBusy(p.id);
+    const t = toast({ title: `Adding “${p.name}”`, tone: "progress" });
+    try {
+      const r = await applyWorldPack(p, inst);
+      qc.invalidateQueries({ queryKey: ["content", inst.id] });
+      toast({ title: `“${p.name}” added`, body: summarise(r), tone: "success" });
+      setOpen(false);
+    } catch (e) {
+      toast({ title: "Couldn't apply the pack", body: String(e), tone: "error" });
+    } finally {
+      dismiss(t);
+      setBusy(null);
+    }
+  };
+  return (
+    <>
+      <Button icon={Layers3} onClick={() => setOpen(true)}>World pack</Button>
+      <Modal open={open} onClose={() => setOpen(false)} title={`Add a world pack to ${inst.name}`}>
+        {packs.data?.length ? (
+          <ul className="flex flex-col gap-2">
+            {packs.data.map((p) => (
+              <li key={p.id} className="flex items-center gap-3 rounded-card bg-slate-raised/50 p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[14px] font-medium">{p.name}</p>
+                  <p className="truncate text-[12px] text-muted">{p.items.length} items{p.description ? ` · ${p.description}` : ""}</p>
+                </div>
+                <Button size="sm" variant="primary" icon={Plus} loading={busy === p.id} disabled={!!busy} onClick={() => apply(p)}>Add</Button>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <Empty icon={Layers3} title="No world packs yet" action={<Button variant="primary" onClick={() => navigate("/packs")}>Make one</Button>}>A world pack is your own reusable mix of mods, resource packs, data packs and shaders.</Empty>
+        )}
+      </Modal>
+    </>
   );
 }
 
@@ -297,20 +356,57 @@ function Worlds({ inst }: { inst: Inst }) {
         </div>
       </Glass>
       {worlds.isLoading ? <Skeleton className="h-40" /> : worlds.data?.length ? (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] gap-3">
-          {worlds.data.map((w, i) => (
-            <motion.li key={w.folder} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="glass lift overflow-hidden rounded-panel">
-              <div className="h-28 bg-slate-raised" style={!w.icon ? { background: instanceGradient(w.folder) } : undefined}>{w.icon && <img src={w.icon} alt="" className="size-full object-cover [image-rendering:pixelated]" />}</div>
-              <div className="p-3">
-                <p className="truncate text-[15px] font-medium">{w.folder}</p>
-                <p className="text-[12px] text-muted">{ago(new Date(w.modified * 1000).toISOString())} · {w.sizeMb.toFixed(1)} MB</p>
-              </div>
-            </motion.li>
-          ))}
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
+          {worlds.data.map((w, i) => <WorldCard key={w.folder} w={w} i={i} inst={inst} />)}
         </ul>
       ) : <Empty icon={Globe2} title="No worlds yet">Play this instance and create a world; it'll show up here.</Empty>}
       <div><Button icon={FolderOpen} onClick={() => api.openFolder(inst.id, "saves")}>Open saves folder</Button></div>
     </div>
+  );
+}
+
+const MODE_TONE: Record<string, "accent" | "gold" | "neutral"> = { creative: "gold", survival: "accent" };
+
+/** A world with its in-game snapshot, details from level.dat, and one-click play. */
+function WorldCard({ w, i, inst }: { w: World; i: number; inst: Inst }) {
+  const { play, launching } = useApp();
+  const [open, setOpen] = useState(false);
+  const info = w.info;
+  const busy = !!launching[inst.id];
+  return (
+    <motion.li initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="glass lift group overflow-hidden rounded-panel">
+      <button type="button" onClick={() => setOpen((o) => !o)} className="relative block h-32 w-full overflow-hidden text-left" style={!w.icon ? { background: instanceGradient(w.folder) } : undefined} aria-expanded={open}>
+        {w.icon ? <img src={w.icon} alt="" className="size-full object-cover transition-transform duration-500 [image-rendering:pixelated] group-hover:scale-110" /> : <div className="block-grid absolute inset-0 opacity-40" />}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+        <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between gap-2">
+          <p className="truncate text-[15px] font-bold text-white drop-shadow">{info?.name || w.folder}</p>
+          {info?.days != null && <span className="shrink-0 rounded-chip bg-black/50 px-2 py-0.5 text-[11px] text-white">Day {info.days.toLocaleString()}</span>}
+        </div>
+      </button>
+      <div className="p-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {info?.gameMode && <Badge tone={MODE_TONE[info.gameMode] ?? "neutral"}>{info.hardcore ? "Hardcore" : info.gameMode[0]!.toUpperCase() + info.gameMode.slice(1)}</Badge>}
+          {info?.difficulty && !info.hardcore && <Badge>{info.difficulty[0]!.toUpperCase() + info.difficulty.slice(1)}</Badge>}
+          {info?.cheats && <Badge>Cheats</Badge>}
+          {info?.version && <Badge>{info.version}</Badge>}
+        </div>
+        <p className="mt-1.5 text-[12px] text-muted">Played {ago(new Date(w.modified * 1000).toISOString())} · {w.sizeMb.toFixed(1)} MB</p>
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
+                <dt className="text-muted">Folder</dt><dd className="truncate" data-selectable>{w.folder}</dd>
+                {info?.seed && <><dt className="text-muted">Seed</dt><dd className="truncate font-mono" data-selectable>{info.seed}</dd></>}
+              </dl>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <div className="mt-3 flex gap-2">
+          <Button size="sm" variant="primary" icon={Play} disabled={busy} onClick={() => play(inst, undefined, w.folder)}>Play</Button>
+          <Button size="sm" icon={FolderOpen} onClick={() => api.openFolder(inst.id, `saves/${w.folder}`)}>Folder</Button>
+        </div>
+      </div>
+    </motion.li>
   );
 }
 

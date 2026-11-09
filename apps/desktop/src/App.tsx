@@ -13,39 +13,39 @@ import { Discover } from "./pages/Discover";
 import { Favorites } from "./pages/Favorites";
 import { InstancePage } from "./pages/Instance";
 import { Servers } from "./pages/Servers";
+import { WorldPacks } from "./pages/WorldPacks";
 import { Transfer } from "./pages/Transfer";
 import { Settings } from "./pages/Settings";
 import { prefetchDiscover } from "./lib/queries";
 import { startLogCapture } from "./lib/logs";
-import { motionFactor } from "./lib/appearance";
+import { motionFactor, transitionProps } from "./lib/appearance";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 const CATS: ContentCategory[] = ["mods", "resourcepacks", "datapacks", "shaders", "modpacks", "plugins"];
 
 function Pages() {
   const location = useLocation();
+  const { appearance } = useApp();
   // Route-level transition keyed on the first path segment, so tab changes inside a page don't re-animate the page.
   const key = location.pathname.split("/").slice(0, 3).join("/");
   return (
     <AnimatePresence mode="wait">
-      <motion.div
-        key={key}
-        initial={{ opacity: 0, y: 14, filter: "blur(6px)" }}
-        animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-        exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
-        transition={{ type: "spring", stiffness: 260, damping: 30 }}
-        className="min-h-full"
-      >
+      <motion.div key={key} {...transitionProps(appearance)} className="min-h-full">
+        {/* A broken page shows an error card instead of blanking the window; changing page resets it. */}
+        <ErrorBoundary area="page" key={key}>
         <Routes location={location}>
           <Route path="/" element={<Home />} />
           <Route path="/discover/:category" element={<Discover />} />
           <Route path="/favorites" element={<Favorites />} />
           <Route path="/instance/:id" element={<InstancePage />} />
+          <Route path="/packs" element={<WorldPacks />} />
           <Route path="/servers" element={<Servers />} />
           <Route path="/servers/:id" element={<Servers />} />
           <Route path="/transfer" element={<Transfer />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Home />} />
         </Routes>
+        </ErrorBoundary>
       </motion.div>
     </AnimatePresence>
   );
@@ -84,10 +84,10 @@ function Shell() {
           </main>
         </div>
       </div>
-      <NewInstanceDialog />
-      <CommandPalette />
-      <ProjectDrawer />
-      <Onboarding />
+      <ErrorBoundary area="dialog"><NewInstanceDialog /></ErrorBoundary>
+      <ErrorBoundary area="dialog"><CommandPalette /></ErrorBoundary>
+      <ErrorBoundary area="panel"><ProjectDrawer /></ErrorBoundary>
+      <ErrorBoundary area="tour"><Onboarding /></ErrorBoundary>
       <Toaster />
     </MotionConfig>
   );
@@ -97,7 +97,9 @@ export function App() {
   return (
     <AppProvider>
       <HashRouter>
-        <Shell />
+        <ErrorBoundary>
+          <Shell />
+        </ErrorBoundary>
       </HashRouter>
     </AppProvider>
   );

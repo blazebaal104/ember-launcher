@@ -108,11 +108,52 @@ export interface ContentFile {
   fromBundle: boolean;
 }
 
+export interface LevelInfo {
+  name?: string | null;
+  gameMode?: string | null;
+  hardcore: boolean;
+  cheats: boolean;
+  difficulty?: string | null;
+  version?: string | null;
+  seed?: string | null;
+  days?: number | null;
+  lastPlayed?: number | null;
+}
+
+export type PackCategory = "mods" | "resourcepacks" | "datapacks" | "shaders";
+
+export interface PackItem {
+  projectId: string;
+  slug: string;
+  title: string;
+  iconUrl?: string | null;
+  category: PackCategory;
+}
+
+/** A reusable, version-independent bundle of content. Resolved per instance when applied. */
+export interface WorldPack {
+  id: string;
+  name: string;
+  description: string;
+  items: PackItem[];
+  /** Iris settings for the pack's shader. */
+  shaderConfig?: string | null;
+  gameProfile?: string | null;
+  created: number;
+}
+
+export interface Activation {
+  resourcePacks: string[];
+  shader?: string | null;
+  shaderConfig?: string | null;
+}
+
 export interface World {
   folder: string;
   modified: number;
   sizeMb: number;
   icon?: string | null;
+  info?: LevelInfo;
 }
 
 export interface Screenshot {
@@ -158,6 +199,24 @@ export interface ServerView {
   installed: boolean;
   running: boolean;
   uptimeSecs?: number | null;
+  autoNetwork?: boolean;
+}
+
+export interface ServerSample {
+  t: number;
+  cpu: number;
+  memoryMb: number;
+  players: number;
+}
+
+export interface ServerLive {
+  ready: boolean;
+  port: number;
+  players: string[];
+  samples: ServerSample[];
+  lagWarnings: number;
+  lastLag?: string | null;
+  network: { checking: boolean; lanIp?: string | null; publicIp?: string | null; upnp: boolean; upnpError?: string | null; sharedIp: boolean };
 }
 
 export interface CreateServerReq {
@@ -234,7 +293,7 @@ export const api = {
   currentAccount: () => call<AccountSummary | null>("current_account"),
   logout: () => call<void>("logout"),
 
-  launch: (id: string, server?: string) => call<void>("launch_instance", { id, server }),
+  launch: (id: string, server?: string, world?: string) => call<void>("launch_instance", { id, server, world }),
   stop: (id: string) => call<void>("stop_instance", { id }),
 
   installFiles: (instanceId: string, files: ResolvedFile[], dir = "mods") =>
@@ -263,12 +322,18 @@ export const api = {
   acceptEula: (id: string) => call<ServerView>("server_accept_eula", { id }),
   startServer: (id: string) => call<void>("server_start", { id }),
   stopServer: (id: string) => call<void>("server_stop", { id }),
+  serverLive: (id: string) => call<ServerLive | null>("server_live", { id }),
   serverCommand: (id: string, command: string) => call<void>("server_command", { id, command }),
   serverProperties: (id: string) => call<Record<string, string>>("server_properties", { id }),
   setServerProperties: (id: string, changes: Record<string, string>) => call<Record<string, string>>("server_set_properties", { id, changes }),
   serverInstallFiles: (id: string, files: ResolvedFile[]) => call<number>("server_install_files", { id, files: files.filter((f) => f.url).map(fileJob) }),
   openServerFolder: (id: string) => call<void>("server_open_folder", { id }),
   networkInfo: () => call<{ lanIp?: string | null }>("network_info"),
+
+  worldPacks: () => call<WorldPack[]>("world_packs_list"),
+  saveWorldPacks: (packs: WorldPack[]) => call<void>("world_packs_save", { packs }),
+  activatePacks: (instanceId: string, activation: Activation) => call<void>("world_pack_activate", { instanceId, activation }),
+  shaderState: (instanceId: string) => call<{ shader?: string | null; config?: string | null }>("instance_shader_state", { instanceId }),
 
   curseforge: (method: "GET" | "POST", path: string, body?: unknown) => call<unknown>("curseforge_request", { method, path, body }),
 };
@@ -291,12 +356,28 @@ const demoInstances: Instance[] = [
 ];
 const demoSettings: LauncherSettings = { msaClientId: null, onLaunch: "keep", ui: undefined, onboarded: typeof location !== "undefined" && !location.search.includes("tour") };
 let demoFavorites: Favorite[] = [];
+let demoPacks: WorldPack[] = [
+  {
+    id: "cozy",
+    name: "Cozy survival",
+    description: "Prettier visuals and small quality-of-life touches for a relaxed playthrough.",
+    created: Date.now() - 864e5 * 3,
+    shaderConfig: "SHADOW_QUALITY=1.0\n",
+    items: [
+      { projectId: "AANobbMI", slug: "sodium", title: "Sodium", category: "mods", iconUrl: "https://cdn.modrinth.com/data/AANobbMI/295862f4724dc3f78df3447ad6072b2dcd3ef0c9_96.webp" },
+      { projectId: "YL57xq9U", slug: "iris", title: "Iris Shaders", category: "mods" },
+      { projectId: "R6NEzAwj", slug: "complementary-reimagined", title: "Complementary Shaders - Reimagined", category: "shaders" },
+      { projectId: "BVzZfTc1", slug: "fresh-animations", title: "Fresh Animations", category: "resourcepacks" },
+      { projectId: "terralith", slug: "terralith", title: "Terralith", category: "datapacks" },
+    ],
+  },
+];
 let demoProfiles: ProfileStore = {
   defaultProfile: "default",
   profiles: [{ id: "default", name: "My settings", options: { fov: "0.25", renderDistance: "12", guiScale: "0", maxFps: "260", mouseSensitivity: "0.5", autoJump: "false" }, keybinds: { "key.sprint": "key.keyboard.left.control" } }],
 };
 const demoServers: ServerView[] = [
-  { id: "friends", name: "Friends SMP", kind: "paper", gameVersion: "26.3", memoryMb: 4096, port: 25565, eulaAccepted: true, createdAt: days(5), installed: true, running: false },
+  { id: "friends", name: "Friends SMP", kind: "fabric", gameVersion: "26.3", memoryMb: 4096, port: 25565, eulaAccepted: true, createdAt: days(5), installed: true, running: true, uptimeSecs: 1260 },
 ];
 
 async function demo(cmd: string, args?: Record<string, unknown>): Promise<unknown> {
@@ -350,7 +431,10 @@ async function demo(cmd: string, args?: Record<string, unknown>): Promise<unknow
           ]
         : [];
     case "list_worlds":
-      return [{ folder: "New World", modified: Date.now() / 1000 - 3600, sizeMb: 48.2 }, { folder: "Creative build", modified: Date.now() / 1000 - 86400 * 4, sizeMb: 12.7 }];
+      return [
+        { folder: "New World", modified: Date.now() / 1000 - 3600, sizeMb: 48.2, info: { name: "New World", gameMode: "survival", hardcore: false, cheats: false, difficulty: "normal", version: "26.3", seed: "-4172144997902289642", days: 38 } },
+        { folder: "Creative build", modified: Date.now() / 1000 - 86400 * 4, sizeMb: 12.7, info: { name: "Creative build", gameMode: "creative", hardcore: false, cheats: true, difficulty: "peaceful", version: "26.3", seed: "12345", days: 4 } },
+      ];
     case "list_screenshots":
       return [];
     case "favorites_list":
@@ -386,6 +470,19 @@ async function demo(cmd: string, args?: Record<string, unknown>): Promise<unknow
       s.eulaAccepted = true;
       return s;
     }
+    case "server_live": {
+      const n = 90;
+      const now = Date.now() / 2000;
+      return {
+        ready: true,
+        port: 25565,
+        players: ["Alex", "Steve", "Sunny"],
+        lagWarnings: 1,
+        lastLag: "Can't keep up! Is the server overloaded? Running 2140ms or 42 ticks behind",
+        network: { checking: false, lanIp: "192.168.1.42", publicIp: "81.2.69.160", upnp: true, upnpError: null, sharedIp: false },
+        samples: Array.from({ length: n }, (_, i) => ({ t: i * 2, cpu: 18 + 9 * Math.sin((i + now) / 6) + (i % 7) * 1.3, memoryMb: 1900 + i * 8 + 120 * Math.sin(i / 9), players: i < 20 ? 1 : i < 55 ? 2 : 3 })),
+      };
+    }
     case "server_properties":
       return { motd: "Friends SMP", "max-players": "10", difficulty: "normal", gamemode: "survival", "online-mode": "true", "server-port": "25565", pvp: "true", "view-distance": "10" };
     case "network_info":
@@ -393,6 +490,15 @@ async function demo(cmd: string, args?: Record<string, unknown>): Promise<unknow
     case "install_files":
     case "server_install_files":
       return (a.files as unknown[]).length;
+    case "world_packs_list":
+      return demoPacks;
+    case "world_packs_save":
+      demoPacks = a.packs as WorldPack[];
+      return undefined;
+    case "world_pack_activate":
+      return undefined;
+    case "instance_shader_state":
+      return { shader: "ComplementaryReimagined_r5.4.zip", config: "SHADOW_QUALITY=1.0\n" };
     case "install_modpack":
       throw { code: "other", message: "Modpack installs need the desktop app." };
     case "curseforge_request":

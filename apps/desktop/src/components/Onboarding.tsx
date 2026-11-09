@@ -10,7 +10,7 @@ import { Button } from "./ui";
  * First-run tour: seven animated explainers drawn with code (no video files), so they
  * always match the user's theme and accent.
  */
-const SLIDES: Array<{ title: string; text: string; art: () => React.ReactNode }> = [
+const SLIDES: Array<{ title: string; text: string; art: React.ComponentType }> = [
   { title: "Welcome to Ember", text: "A fast Minecraft launcher for 1.21 and newer. Here's a 30-second tour of what it does for you.", art: WelcomeArt },
   { title: "Every instance is its own world", text: "Each instance has its own mods, worlds, packs and settings in its own folder. Nothing ever clashes, and you can open any folder in one click.", art: InstancesArt },
   { title: "Faster, automatically", text: "New instances get a tuned performance stack (Sodium, Lithium, FerriteCore and more) picked for that exact Minecraft version. Most players see 2–3× more FPS.", art: FpsArt },
@@ -57,7 +57,8 @@ export function Onboarding() {
               <div className="block-grid absolute inset-0 opacity-60" />
               <AnimatePresence mode="wait" custom={dir}>
                 <motion.div key={i} custom={dir} initial={{ opacity: 0, x: dir * 60 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: dir * -60 }} transition={{ type: "spring", stiffness: 300, damping: 30 }} className="absolute inset-0 grid place-items-center">
-                  {slide.art()}
+                  {/* Rendered as a component (not called as a function): some illustrations use hooks. */}
+                  <slide.art />
                 </motion.div>
               </AnimatePresence>
             </div>

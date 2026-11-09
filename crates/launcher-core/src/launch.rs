@@ -22,6 +22,8 @@ pub struct LaunchOptions {
     pub resolution: Option<(u32, u32)>,
     /// Join a server directly (powers the overlay's quick server switcher on relaunch).
     pub quick_play_server: Option<String>,
+    /// Open a singleplayer world (folder name in saves/) straight away.
+    pub quick_play_singleplayer: Option<String>,
 }
 
 pub struct LaunchCommand {
@@ -57,6 +59,9 @@ pub fn build(paths: &LauncherPaths, inst: &InstanceConfig, prepared: &Prepared, 
     if opts.quick_play_server.is_some() {
         ctx = ctx.with_feature("is_quick_play_multiplayer", true);
     }
+    if opts.quick_play_singleplayer.is_some() {
+        ctx = ctx.with_feature("is_quick_play_singleplayer", true);
+    }
 
     let mut classpath: Vec<String> = json
         .libraries
@@ -83,6 +88,7 @@ pub fn build(paths: &LauncherPaths, inst: &InstanceConfig, prepared: &Prepared, 
         ("resolution_width", w.to_string()),
         ("resolution_height", h.to_string()),
         ("quickPlayMultiplayer", opts.quick_play_server.clone().unwrap_or_default()),
+        ("quickPlaySingleplayer", opts.quick_play_singleplayer.clone().unwrap_or_default()),
         ("natives_directory", natives.display().to_string()),
         ("launcher_name", LAUNCHER_NAME.into()),
         ("launcher_version", LAUNCHER_VERSION.into()),

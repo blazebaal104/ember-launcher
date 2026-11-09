@@ -9,7 +9,7 @@ import { curseforge } from "../lib/clients";
 import { ago, compact } from "../lib/format";
 import { api } from "../lib/ipc";
 import { compatibleInstances, installProject } from "../lib/install";
-import { PAGE_SIZE, prefetchDiscover, prefetchProject, useDiscover, useFavorites, useServers, type DiscoverOpts } from "../lib/queries";
+import { PAGE_SIZE, isInstalled, prefetchDiscover, prefetchProject, useDiscover, useFavorites, useInstalled, useServers, type DiscoverOpts, type InstalledSet } from "../lib/queries";
 import { useApp } from "../state";
 import { Empty, IconButton, Segmented, Skeleton, inputClass, selectClass } from "../components/ui";
 import { click } from "../lib/sounds";
@@ -118,6 +118,13 @@ export function Discover() {
         <IconButton icon={appearance.discoverLayout === "grid" ? List : LayoutGrid} label={appearance.discoverLayout === "grid" ? "List view" : "Grid view"} onClick={() => setAppearance({ discoverLayout: appearance.discoverLayout === "grid" ? "list" : "grid" })} />
       </div>
 
+      {forInstance && target && params.get("instance") === target.id && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 flex items-center gap-3 rounded-panel border border-copper/30 bg-copper/10 px-4 py-3 text-[14px]">
+          <Download className="size-4 text-copper" />
+          <span className="flex-1">Adding to <b>{target.name}</b> ({target.gameVersion}{target.loader !== "vanilla" ? `, ${target.loader}` : ""}). Only things that work with it are shown; ones it already has are marked <b>Installed</b>.</span>
+          <button type="button" className="press rounded-chip px-3 py-1 text-[13px] text-muted hover:text-text" onClick={() => navigate(`/instance/${target.id}`)}>Back to instance</button>
+        </motion.div>
+      )}
       {cat.id === "modpacks" && !debounced && sort === "follows" && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 flex items-center gap-3 rounded-panel border border-gold/30 bg-gold/8 px-4 py-3 text-[14px]">
           <Trophy className="size-5 text-gold" /> The best-loved modpacks on Modrinth, ranked by how many players follow them. Install creates a ready-to-play instance.
@@ -134,7 +141,7 @@ export function Discover() {
         optsFor={(p) => optsFor(cat.id, p)}
         onMore={() => setPages((p) => p + 1)}
         target={target}
-        onOpen={(h) => openProject({ ...h, category: cat.id })}
+        onOpen={(h) => openProject({ ...h, category: cat.id, instanceId: forInstance ? target?.id : undefined })}
         toast={toast}
       />
     </div>
@@ -159,6 +166,7 @@ function Results({ category, source, pages, optsFor, onMore, target, onOpen, toa
   const pageQueries = Array.from({ length: pages }, (_, p) => p);
   const sentinel = useRef<HTMLDivElement>(null);
   const first = useDiscover(source, category, optsFor(0));
+  const installed = useInstalled(category !== "plugins" && category !== "modpacks" && category !== "datapacks" ? target?.id : undefined).data;
   const total = first.data?.total ?? 0;
   const hasMore = pages * PAGE_SIZE < total;
 
@@ -181,29 +189,30 @@ function Results({ category, source, pages, optsFor, onMore, target, onOpen, toa
       <div className={appearance.discoverLayout === "grid" ? "grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3" : "flex flex-col gap-2"}>
         {first.isLoading
           ? [...Array(9)].map((_, i) => <Skeleton key={i} className={appearance.discoverLayout === "grid" ? "h-[184px]" : "h-20"} />)
-          : pageQueries.map((p) => <ResultPage key={p} page={p} category={category} source={source} opts={optsFor(p)} target={target} onOpen={onOpen} toast={toast} />)}
+          : pageQueries.map((p) => <ResultPage key={p} page={p} category={category} source={source} opts={optsFor(p)} target={target} installed={installed} onOpen={onOpen} toast={toast} />)}
       </div>
       {hasMore && <div ref={sentinel} className="flex justify-center py-6 text-muted"><Loader2 className="size-5 animate-spin" /></div>}
     </>
   );
 }
 
-function ResultPage({ page, category, source, opts, target, onOpen, toast }: { page: number; category: ContentCategory; source: ContentSource; opts: DiscoverOpts; target?: ReturnType<typeof compatibleInstances>[number]; onOpen: (h: ContentHit) => void; toast: ReturnType<typeof useApp>["toast"] }) {
+function ResultPage({ page, category, source, opts, target, installed, onOpen, toast }: { page: number; category: ContentCategory; source: ContentSource; opts: DiscoverOpts; target?: ReturnType<typeof compatibleInstances>[number]; installed?: InstalledSet; onOpen: (h: ContentHit) => void; toast: ReturnType<typeof useApp>["toast"] }) {
   const q = useDiscover(source, category, opts);
   if (!q.data) return null;
   return (
     <>
-      {q.data.hits.map((h, i) => <ProjectCard key={`${page}-${h.id}`} hit={h} index={i} category={category} target={target} onOpen={onOpen} toast={toast} />)}
+      {q.data.hits.map((h, i) => <ProjectCard key={`${page}-${h.id}`} hit={h} index={i} category={category} target={target} installed={isInstalled(installed, h)} onOpen={onOpen} toast={toast} />)}
     </>
   );
 }
 
-export function ProjectCard({ hit, index, category, target, onOpen, toast }: { hit: ContentHit; index: number; category: ContentCategory; target?: ReturnType<typeof compatibleInstances>[number]; onOpen: (h: ContentHit) => void; toast: ReturnType<typeof useApp>["toast"] }) {
+export function ProjectCard({ hit, index, category, target, installed, onOpen, toast }: { hit: ContentHit; index: number; category: ContentCategory; target?: ReturnType<typeof compatibleInstances>[number]; installed?: boolean; onOpen: (h: ContentHit) => void; toast: ReturnType<typeof useApp>["toast"] }) {
   const qc = useQueryClient();
   const { appearance, refresh, dismiss } = useApp();
   const favs = useFavorites();
   const servers = useServers();
-  const [state, setState] = useState<"idle" | "busy" | "done">("idle");
+  const [busyState, setState] = useState<"idle" | "busy" | "done">("idle");
+  const state = installed && busyState === "idle" ? "done" : busyState;
   const isFav = (favs.data ?? []).some((f) => f.id === hit.id);
   const grid = appearance.discoverLayout === "grid";
   const paper = (servers.data ?? []).filter((s) => s.kind === "paper");
@@ -267,7 +276,7 @@ export function ProjectCard({ hit, index, category, target, onOpen, toast }: { h
               </motion.span>
             </AnimatePresence>
           </button>
-          <button type="button" onClick={quickInstall} disabled={state !== "idle"} className={`press press-accent flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip px-3 py-1.5 text-[13px] font-medium ${state === "done" ? "bg-copper/15 text-copper" : "bg-copper text-on-accent"}`}>
+          <button type="button" onClick={quickInstall} disabled={state !== "idle"} title={installed && target ? `Already in ${target.name}` : undefined} className={`press press-accent flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip px-3 py-1.5 text-[13px] font-medium ${state === "done" ? "bg-copper/15 text-copper" : "bg-copper text-on-accent"}`}>
             {state === "busy" ? <Loader2 className="size-3.5 animate-spin" /> : state === "done" ? <Check className="size-3.5" /> : <Download className="size-3.5" />}
             {state === "done" ? "Installed" : "Install"}
           </button>

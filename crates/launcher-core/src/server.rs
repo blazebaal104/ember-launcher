@@ -45,6 +45,13 @@ pub struct ServerConfig {
     pub java_component: Option<String>,
     #[serde(default)]
     pub installed: bool,
+    /// Forward the port on the router (UPnP) when the server starts.
+    #[serde(default = "yes")]
+    pub auto_network: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -65,6 +72,53 @@ pub struct CreateServer {
     pub gamemode: Option<String>,
     #[serde(default)]
     pub difficulty: Option<String>,
+}
+
+/// Aikar's flags (https://docs.papermc.io/paper/aikars-flags), minus the size-dependent ones.
+pub const AIKAR_FLAGS: &[&str] = &[
+    "-XX:+UseG1GC",
+    "-XX:+ParallelRefProcEnabled",
+    "-XX:MaxGCPauseMillis=200",
+    "-XX:+UnlockExperimentalVMOptions",
+    "-XX:+DisableExplicitGC",
+    "-XX:+AlwaysPreTouch",
+    "-XX:G1HeapWastePercent=5",
+    "-XX:G1MixedGCCountTarget=4",
+    "-XX:InitiatingHeapOccupancyPercent=15",
+    "-XX:G1MixedGCLiveThresholdPercent=90",
+    "-XX:G1RSetUpdatingPauseTimePercent=5",
+    "-XX:SurvivorRatio=32",
+    "-XX:+PerfDisableSharedMem",
+    "-XX:MaxTenuringThreshold=1",
+    "-Dusing.aikars.flags=https://mcflags.emc.gs",
+    "-Daikars.new.flags=true",
+];
+
+/// Server-side optimisation mods for Fabric servers (all server-safe, no client needed).
+pub const SERVER_MODS: &[&str] = &["fabric-api", "lithium", "ferrite-core", "krypton", "modernfix"];
+
+/// Add the server optimisation mods that are missing (by file name). Returns what was added.
+pub async fn ensure_server_mods(client: &reqwest::Client, mods_dir: &std::path::Path, game_version: &str) -> Result<Vec<String>> {
+    tokio::fs::create_dir_all(mods_dir).await?;
+    let mut names = Vec::new();
+    let mut rd = tokio::fs::read_dir(mods_dir).await?;
+    while let Some(e) = rd.next_entry().await? {
+        names.push(e.file_name().to_string_lossy().into_owned());
+    }
+    let missing: Vec<&str> = SERVER_MODS.iter().copied().filter(|s| !crate::perf_bundle::has_mod(&names, s)).collect();
+    let gv = [game_version];
+    let found = futures::future::join_all(missing.iter().map(|s| crate::modrinth::project_versions(client, s, &["fabric"], &gv))).await;
+    let mut jobs = Vec::new();
+    let mut added = Vec::new();
+    for (slug, res) in missing.iter().zip(found) {
+        let Ok(list) = res else { continue };
+        let Some(v) = crate::modrinth::best(list) else { continue };
+        let Some(f) = v.primary_file() else { continue };
+        jobs.push(DownloadJob { url: f.url.clone(), dest: mods_dir.join(&f.filename), sha1: Some(f.hashes.sha1.clone()), size: Some(f.size) });
+        added.push((*slug).to_string());
+    }
+    crate::download::download_all(client, jobs, 4, None).await?;
+    Ok(added)
 }
 
 pub struct ServerManager {
@@ -111,6 +165,7 @@ impl ServerManager {
             created_at: Utc::now(),
             java_component: None,
             installed: false,
+            auto_network: true,
         };
         let dir = self.dir(&id);
         tokio::fs::create_dir_all(&dir).await?;
@@ -125,6 +180,11 @@ impl ServerManager {
         props.insert("difficulty".to_string(), req.difficulty.unwrap_or_else(|| "normal".into()));
         props.insert("online-mode".to_string(), "true".into());
         props.insert("enable-command-block".to_string(), "false".into());
+        // Lighter defaults that keep the game smooth for a home-hosted server.
+        props.insert("view-distance".to_string(), "10".into());
+        props.insert("simulation-distance".to_string(), "8".into());
+        props.insert("sync-chunk-writes".to_string(), "false".into());
+        props.insert("network-compression-threshold".to_string(), "256".into());
         write_properties(&dir.join("server.properties"), &props).await?;
         self.save(&cfg).await?;
         Ok(cfg)
@@ -200,6 +260,11 @@ impl ServerManager {
                 let url = format!("{}/versions/loader/{}/{}/{}/server/jar", crate::fabric::FABRIC_META, cfg.game_version, loader, installer);
                 let _ = tokio::fs::remove_file(&jar).await; // no hash available: always refresh
                 download_one(&self.client, &DownloadJob { url, dest: jar.clone(), sha1: None, size: None }).await?;
+                match ensure_server_mods(&self.client, &dir.join("mods"), &cfg.game_version).await {
+                    Ok(added) if !added.is_empty() => tracing::info!(?added, "server performance mods"),
+                    Ok(_) => {}
+                    Err(e) => tracing::warn!(error = %e, "could not add server performance mods"),
+                }
             }
             ServerKind::Paper => {
                 let builds: Vec<serde_json::Value> = self
@@ -232,16 +297,16 @@ impl ServerManager {
     }
 
     pub fn command(&self, cfg: &ServerConfig, java: PathBuf) -> (PathBuf, Vec<String>, PathBuf) {
-        let mut args = vec![
-            format!("-Xms{}m", (cfg.memory_mb / 2).max(512)),
-            format!("-Xmx{}m", cfg.memory_mb),
-            "-XX:+UseG1GC".into(),
-            "-XX:+ParallelRefProcEnabled".into(),
-            "-XX:MaxGCPauseMillis=200".into(),
-            "-jar".into(),
-            "server.jar".into(),
-            "nogui".into(),
-        ];
+        // Same min and max heap plus Aikar's G1 flags: the standard tuning for Minecraft servers.
+        let big = cfg.memory_mb >= 12 * 1024;
+        let mut args = vec![format!("-Xms{}m", cfg.memory_mb), format!("-Xmx{}m", cfg.memory_mb)];
+        args.extend(AIKAR_FLAGS.iter().map(|s| s.to_string()));
+        if big {
+            args.extend(["-XX:G1NewSizePercent=40", "-XX:G1MaxNewSizePercent=50", "-XX:G1HeapRegionSize=16M", "-XX:G1ReservePercent=15"].map(String::from));
+        } else {
+            args.extend(["-XX:G1NewSizePercent=30", "-XX:G1MaxNewSizePercent=40", "-XX:G1HeapRegionSize=8M", "-XX:G1ReservePercent=20"].map(String::from));
+        }
+        args.extend(["-jar", "server.jar", "nogui"].map(String::from));
         if cfg.kind == ServerKind::Paper {
             args.insert(0, "-Dpaper.disableChannelLimit=true".into());
         }

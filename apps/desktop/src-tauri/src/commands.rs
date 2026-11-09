@@ -49,8 +49,13 @@ pub async fn delete_instance(state: State<'_, AppState>, id: String) -> Result<(
 pub async fn open_instance_folder(app: AppHandle, state: State<'_, AppState>, id: String, sub: Option<String>) -> Result<()> {
     let inst = state.instances.load(&id).await?; // validates the id exists
     let mut dir = state.paths.instance(&inst.id);
-    if let Some(s) = sub.filter(|s| launcher_core::paths::INSTANCE_DIRS.contains(&s.as_str())) {
-        dir = dir.join(s);
+    if let Some(s) = sub {
+        if launcher_core::paths::INSTANCE_DIRS.contains(&s.as_str()) {
+            dir = dir.join(s);
+        } else if let Some(world) = s.strip_prefix("saves/").filter(|w| !w.is_empty() && !w.contains(['/', '\\']) && *w != "..") {
+            // One world's folder.
+            dir = dir.join("saves").join(world);
+        }
     }
     app.opener().open_path(dir.display().to_string(), None::<&str>).map_err(|e| Error::Other(e.to_string()))
 }
@@ -263,7 +268,7 @@ struct GameLog {
 }
 
 #[tauri::command]
-pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: String, server: Option<String>) -> Result<()> {
+pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: String, server: Option<String>, world: Option<String>) -> Result<()> {
     if state.running_games.lock().await.contains_key(&id) {
         return Err(Error::Other("this instance is already running".into()));
     }
@@ -280,6 +285,12 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
     };
 
     let prepared = install::prepare(&state.client, &state.paths, &inst, Some(emit("files"))).await?;
+    // Fabric/Quilt: put back Fabric API (and add Cloth Config / Mod Menu once) if missing.
+    match launcher_core::perf_bundle::ensure_essentials(&state.client, &state.paths.instance(&inst.id), &inst).await {
+        Ok(added) if !added.is_empty() => tracing::info!(?added, "added essential mods"),
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "could not check essential mods (offline?)"),
+    }
     let component = prepared.json.java_version.as_ref().map(|j| j.component.clone()).unwrap_or_else(|| "java-runtime-delta".into());
     let java = java::ensure_runtime(&state.client, &state.paths, &component, Some(emit("java"))).await?;
 
@@ -298,12 +309,21 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
         }
     }
 
+    // World packs: switch on queued resource packs / shader, and copy global data packs into worlds.
+    let dir = state.paths.instance(&inst.id);
+    if let Err(e) = launcher_core::world_packs::apply_pending(&dir).await {
+        tracing::warn!(error = %e, "could not apply queued packs");
+    }
+    if let Err(e) = launcher_core::world_packs::sync_global_datapacks(&dir).await {
+        tracing::warn!(error = %e, "could not copy data packs into worlds");
+    }
+
     let mut run_inst = inst.clone();
     if let Some(extra) = settings.default_jvm_args.clone() {
         run_inst.jvm_args.splice(0..0, extra);
     }
     let who = LaunchIdentity { username: account.username.clone(), uuid: account.uuid.clone(), access_token: account.mc_access_token.clone(), xuid: account.xuid.clone() };
-    let cmd = launch::build(&state.paths, &run_inst, &prepared, java, &who, &LaunchOptions { quick_play_server: server, ..Default::default() });
+    let cmd = launch::build(&state.paths, &run_inst, &prepared, java, &who, &LaunchOptions { quick_play_server: server, quick_play_singleplayer: world.filter(|w| !w.contains(['/', '\\']) && w != ".."), ..Default::default() });
     let mut child = launch::spawn(&cmd)?;
     if let Some(pid) = child.id() {
         state.running_games.lock().await.insert(id.clone(), pid);
