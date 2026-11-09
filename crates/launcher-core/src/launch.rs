@@ -184,6 +184,7 @@ mod tests {
             id: "pvp-abc123".into(), name: "PvP".into(), game_version: "1.21.4".into(), loader: Loader::Fabric,
             loader_version: Some("0.16.9".into()), memory_mb: 4096, jvm_args: vec![], java_path: None,
             performance_bundle: true, overlay: true, created_at: chrono::Utc::now(), last_played: None, icon: None,
+            game_profile: None, profile_applied: false, profile_every_launch: false, source: None, favorite: false, play_minutes: 0,
         };
         let who = LaunchIdentity { username: "Steve".into(), uuid: "u".into(), access_token: "t".into(), xuid: "x".into() };
         let cmd = build(&paths, &inst, &Prepared { json, vanilla_id: "1.21.4".into() }, "/java".into(), &who, &LaunchOptions::default());

@@ -113,7 +113,7 @@ public final class VisualFeatures {
         private Double previous;
 
         Fullbright() {
-            super("fullbright", "Fullbright", "See in caves and at night without torches.", false);
+            super("fullbright", "Fullbright", Category.VISUAL, "See in caves and at night without torches.", false);
         }
 
         @SuppressWarnings("unchecked")
@@ -148,7 +148,7 @@ public final class VisualFeatures {
 
     static final class LowHealth extends Feature implements HudModule {
         LowHealth() {
-            super("low_health", "Low health warning", "Red pulse at the screen edges below 30% health.", true);
+            super("low_health", "Low health warning", Category.VISUAL, "Red pulse at the screen edges below 30% health.", true);
         }
 
         @Override
@@ -175,7 +175,7 @@ public final class VisualFeatures {
         private static final EquipmentSlot[] SLOTS = {EquipmentSlot.MAINHAND, EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET};
 
         DurabilityWarning() {
-            super("durability_warning", "Durability warning", "Warns when a tool or armour piece is about to break.", true);
+            super("durability_warning", "Durability warning", Category.VISUAL, "Warns when a tool or armour piece is about to break.", true);
         }
 
         @Override

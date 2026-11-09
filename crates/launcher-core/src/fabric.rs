@@ -13,7 +13,12 @@ pub struct LoaderEntry {
 #[derive(Debug, Deserialize)]
 pub struct LoaderVersion {
     pub version: String,
+    #[serde(default = "yes")]
     pub stable: bool,
+}
+
+fn yes() -> bool {
+    true
 }
 
 /// Latest stable loader that supports this game version (Fabric supports snapshots too).
@@ -36,6 +41,27 @@ pub async fn latest_loader(client: &reqwest::Client, game_version: &str) -> Resu
 pub async fn profile(client: &reqwest::Client, game_version: &str, loader_version: &str) -> Result<VersionJson> {
     Ok(client
         .get(format!("{FABRIC_META}/versions/loader/{game_version}/{loader_version}/profile/json"))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+
+pub const QUILT_META: &str = "https://meta.quiltmc.org/v3";
+
+pub async fn latest_quilt_loader(client: &reqwest::Client, game_version: &str) -> Result<String> {
+    let list: Vec<LoaderEntry> = client.get(format!("{QUILT_META}/versions/loader/{game_version}")).send().await?.error_for_status()?.json().await?;
+    list.iter()
+        .find(|e| !e.loader.version.contains("beta"))
+        .or_else(|| list.first())
+        .map(|e| e.loader.version.clone())
+        .ok_or_else(|| Error::NotFound(format!("Quilt loader for {game_version}")))
+}
+
+pub async fn quilt_profile(client: &reqwest::Client, game_version: &str, loader_version: &str) -> Result<VersionJson> {
+    Ok(client
+        .get(format!("{QUILT_META}/versions/loader/{game_version}/{loader_version}/profile/json"))
         .send()
         .await?
         .error_for_status()?

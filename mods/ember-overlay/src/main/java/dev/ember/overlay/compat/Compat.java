@@ -49,7 +49,7 @@ public final class Compat {
     public static KeyMapping key(String name, int key) {
         if (category == null) category = KeyMapping.Category.register(id("main"));
         return KeyMappingHelper.registerKeyMapping(
-                new KeyMapping("key." + MOD_ID + "." + name, InputConstants.Type.KEYSYM, key, category));
+                new KeyMapping("key." + MOD_ID + "." + name, InputConstants.Type.KEYBOARD, key, category));
     }
 
     /** Draw after chat so we sit above the vanilla HUD but below screens. */

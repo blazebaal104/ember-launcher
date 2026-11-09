@@ -105,7 +105,7 @@ public final class QolFeatures {
         public static Freelook instance;
 
         Freelook() {
-            super("freelook", "Free look", "Hold Left Alt to look around without changing direction.", true);
+            super("freelook", "Free look", Category.QOL, "Hold Left Alt to look around without changing direction.", true);
             instance = this;
         }
 
@@ -160,7 +160,7 @@ public final class QolFeatures {
         private boolean wasDead;
 
         DeathCoords() {
-            super("death_coords", "Death coordinates", "Posts where you died in your chat (only you see it).", true);
+            super("death_coords", "Death coordinates", Category.QOL, "Posts where you died in your chat (only you see it).", true);
         }
 
         @Override
@@ -183,11 +183,11 @@ public final class QolFeatures {
     /** Adds a Reconnect button to the disconnect screen. */
     static final class AutoReconnect extends Feature {
         AutoReconnect() {
-            super("reconnect", "Reconnect button", "One click to rejoin after a disconnect or kick.", true);
+            super("reconnect", "Reconnect button", Category.QOL, "One click to rejoin after a disconnect or kick.", true);
             ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {
                 if (!isEnabled() || !(screen instanceof DisconnectedScreen) || lastServer == null) return;
                 ServerData target = lastServer;
-                Screens.getButtons(screen).add(Button.builder(Component.literal("Reconnect to " + target.name),
+                Screens.getWidgets(screen).add(Button.builder(Component.literal("Reconnect to " + target.name),
                         b -> Compat.switchServer(mc, target)).bounds(w / 2 - 100, h - 30, 200, 20).build());
             });
         }
@@ -198,7 +198,7 @@ public final class QolFeatures {
         private static String query = "";
 
         InventorySearch() {
-            super("inventory_search", "Inventory search", "Type to highlight matching items in chests and your inventory.", true);
+            super("inventory_search", "Inventory search", Category.QOL, "Type to highlight matching items in chests and your inventory.", true);
             ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {
                 if (!isEnabled() || !(screen instanceof AbstractContainerScreen<?> cs) || screen instanceof CreativeModeInventoryScreen) return;
                 var acc = (AbstractContainerScreenAccessor) cs;
@@ -206,7 +206,7 @@ public final class QolFeatures {
                 box.setHint(Component.literal("Search items"));
                 box.setValue(query);
                 box.setResponder(s -> query = s.toLowerCase(Locale.ROOT));
-                Screens.getButtons(screen).add(box);
+                Screens.getWidgets(screen).add(box);
                 ScreenEvents.afterExtract(screen).register((s, g, mx, my, delta) -> {
                     if (query.isEmpty()) return;
                     for (Slot slot : cs.getMenu().slots) {

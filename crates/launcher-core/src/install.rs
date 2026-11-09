@@ -60,12 +60,25 @@ pub async fn prepare(client: &reqwest::Client, paths: &LauncherPaths, inst: &Ins
             tokio::fs::write(&p, serde_json::to_vec_pretty(&profile)?).await?;
             merge(vanilla, profile)
         }
-        (Loader::Vanilla, _) => vanilla,
-        (other, _) => {
-            return Err(Error::Other(format!(
-                "{other:?} installation is not wired up yet (needs the installer processors, see docs/ARCHITECTURE.md)"
-            )))
+        (Loader::Quilt, Some(lv)) => {
+            let profile = fabric::quilt_profile(client, &inst.game_version, lv).await?;
+            let p = paths.version_json(&profile.id);
+            tokio::fs::create_dir_all(p.parent().unwrap()).await?;
+            tokio::fs::write(&p, serde_json::to_vec_pretty(&profile)?).await?;
+            merge(vanilla, profile)
         }
+        (Loader::NeoForge, Some(nf)) => {
+            // The installer needs the vanilla client jar and a Java to run on.
+            if let Some(d) = &vanilla.downloads {
+                download_one(client, &DownloadJob { url: d.client.url.clone(), dest: paths.version_jar(&entry.id), sha1: Some(d.client.sha1.clone()), size: Some(d.client.size) }).await?;
+            }
+            let component = vanilla.java_version.as_ref().map(|j| j.component.clone()).unwrap_or_else(|| "java-runtime-delta".into());
+            let java = crate::java::ensure_runtime(client, paths, &component, None).await?;
+            let profile = crate::neoforge::ensure_installed(client, paths, nf, &java).await?;
+            merge(vanilla, profile)
+        }
+        (Loader::Vanilla, _) => vanilla,
+        (other, None) => return Err(Error::Other(format!("{other:?} instance has no loader version; recreate it"))),
     };
 
     // 3. Files: client jar, libraries, log config, asset index.
@@ -77,6 +90,10 @@ pub async fn prepare(client: &reqwest::Client, paths: &LauncherPaths, inst: &Ins
     for lib in json.libraries.iter().filter(|l| allowed(&l.rules, &ctx)) {
         let Some(dest) = library_path(paths, lib) else { continue };
         if let Some(a) = lib.downloads.as_ref().and_then(|d| d.artifact.as_ref()) {
+            // Empty URL = generated locally by an installer (NeoForge patched client).
+            if a.url.is_empty() {
+                continue;
+            }
             jobs.push(DownloadJob { url: a.url.clone(), dest, sha1: Some(a.sha1.clone()), size: Some(a.size) });
         } else if let (Some(base), Some(rel)) = (&lib.url, maven_path(&lib.name)) {
             let url = format!("{}/{}", base.trim_end_matches('/'), rel);

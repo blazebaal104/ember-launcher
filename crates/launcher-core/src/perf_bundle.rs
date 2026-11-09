@@ -71,10 +71,14 @@ impl InstanceHook for PerformanceBundleHook {
     }
 
     async fn before_create(&self, ctx: &HookContext, cfg: &mut InstanceConfig) -> Result<()> {
-        if !cfg.performance_bundle && !cfg.overlay {
-            return Ok(());
+        // Pin a loader version for every modded instance (also when the bundle is off).
+        if cfg.loader == Loader::Quilt && cfg.loader_version.is_none() {
+            cfg.loader_version = Some(fabric::latest_quilt_loader(&ctx.client, &cfg.game_version).await?);
         }
-        if cfg.loader == Loader::Vanilla {
+        if cfg.loader == Loader::NeoForge && cfg.loader_version.is_none() {
+            cfg.loader_version = Some(crate::neoforge::latest(&ctx.client, &cfg.game_version).await?);
+        }
+        if cfg.loader == Loader::Vanilla && (cfg.performance_bundle || cfg.overlay) {
             cfg.loader = Loader::Fabric;
         }
         if cfg.loader == Loader::Fabric && cfg.loader_version.is_none() {

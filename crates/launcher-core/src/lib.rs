@@ -17,6 +17,7 @@
 //! ```
 
 pub mod auth;
+pub mod content;
 pub mod download;
 pub mod error;
 pub mod fabric;
@@ -25,9 +26,13 @@ pub mod instance;
 pub mod java;
 pub mod launch;
 pub mod modrinth;
+pub mod mrpack;
+pub mod neoforge;
 pub mod paths;
 pub mod perf_bundle;
+pub mod profiles;
 pub mod rules;
+pub mod server;
 pub mod settings;
 pub mod version_json;
 pub mod versions;

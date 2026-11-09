@@ -51,6 +51,45 @@ pub struct InstanceConfig {
     pub last_played: Option<DateTime<Utc>>,
     #[serde(default)]
     pub icon: Option<String>,
+    /// Game settings profile (keybinds, FOV, video...) applied to options.txt.
+    #[serde(default)]
+    pub game_profile: Option<String>,
+    /// True once the profile has been written; with `profile_every_launch` it is re-applied each time.
+    #[serde(default)]
+    pub profile_applied: bool,
+    #[serde(default)]
+    pub profile_every_launch: bool,
+    /// Where this instance came from (e.g. a Modrinth modpack), for display and updates.
+    #[serde(default)]
+    pub source: Option<InstanceSource>,
+    #[serde(default)]
+    pub favorite: bool,
+    /// Total minutes played, updated when the game exits.
+    #[serde(default)]
+    pub play_minutes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstanceSource {
+    pub kind: String,
+    pub project_id: Option<String>,
+    pub version_id: Option<String>,
+    pub title: Option<String>,
+}
+
+/// Fields the UI may change after creation. `None` leaves a field untouched.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstancePatch {
+    pub name: Option<String>,
+    pub memory_mb: Option<u32>,
+    pub jvm_args: Option<Vec<String>>,
+    pub java_path: Option<Option<PathBuf>>,
+    pub game_profile: Option<Option<String>>,
+    pub profile_every_launch: Option<bool>,
+    pub icon: Option<Option<String>>,
+    pub favorite: Option<bool>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -66,6 +105,14 @@ pub struct CreateInstance {
     pub overlay: bool,
     #[serde(default)]
     pub memory_mb: Option<u32>,
+    #[serde(default)]
+    pub loader_version: Option<String>,
+    #[serde(default)]
+    pub game_profile: Option<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
+    #[serde(default)]
+    pub source: Option<InstanceSource>,
 }
 fn default_loader() -> Loader {
     Loader::Fabric
@@ -131,7 +178,7 @@ impl InstanceManager {
             name: req.name,
             game_version: req.game_version,
             loader: req.loader,
-            loader_version: None,
+            loader_version: req.loader_version,
             memory_mb: req.memory_mb.unwrap_or_else(default_memory_mb),
             jvm_args: vec![],
             java_path: None,
@@ -139,7 +186,13 @@ impl InstanceManager {
             overlay: req.overlay,
             created_at: Utc::now(),
             last_played: None,
-            icon: None,
+            icon: req.icon,
+            game_profile: req.game_profile,
+            profile_applied: false,
+            profile_every_launch: false,
+            source: req.source,
+            favorite: false,
+            play_minutes: 0,
         };
 
         for hook in &self.hooks {
@@ -185,8 +238,41 @@ impl InstanceManager {
                 }
             }
         }
-        out.sort_by(|a, b| b.last_played.cmp(&a.last_played).then(b.created_at.cmp(&a.created_at)));
+        out.sort_by(|a, b| b.favorite.cmp(&a.favorite).then(b.last_played.cmp(&a.last_played)).then(b.created_at.cmp(&a.created_at)));
         Ok(out)
+    }
+
+    pub async fn update(&self, id: &str, patch: InstancePatch) -> Result<InstanceConfig> {
+        let mut cfg = self.load(id).await?;
+        if let Some(v) = patch.name.filter(|n| !n.trim().is_empty()) {
+            cfg.name = v.trim().to_string();
+        }
+        if let Some(v) = patch.memory_mb {
+            cfg.memory_mb = v.clamp(1024, 65536);
+        }
+        if let Some(v) = patch.jvm_args {
+            cfg.jvm_args = v;
+        }
+        if let Some(v) = patch.java_path {
+            cfg.java_path = v;
+        }
+        if let Some(v) = patch.game_profile {
+            if v != cfg.game_profile {
+                cfg.profile_applied = false;
+            }
+            cfg.game_profile = v;
+        }
+        if let Some(v) = patch.profile_every_launch {
+            cfg.profile_every_launch = v;
+        }
+        if let Some(v) = patch.icon {
+            cfg.icon = v;
+        }
+        if let Some(v) = patch.favorite {
+            cfg.favorite = v;
+        }
+        self.save(&cfg).await?;
+        Ok(cfg)
     }
 
     pub async fn delete(&self, id: &str) -> Result<()> {
