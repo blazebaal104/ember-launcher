@@ -8,7 +8,7 @@ import dev.ember.overlay.hud.HudModule;
 import dev.ember.overlay.hud.HudStyle;
 import dev.ember.overlay.mixin.OptionInstanceAccessor;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.item.ItemStack;
 
@@ -61,13 +61,13 @@ public final class VisualFeatures {
         register(new Planned("low_fire", "Low fire", Category.VISUAL, "Lowers the burning overlay so you can see. Planned."));
 
         // Hide/replace vanilla HUD pieces without mixins.
-        Compat.wrapVanilla(VanillaElement.SCOREBOARD, orig -> (g, d) -> { if (!scoreboard.isEnabled()) orig.render(g, d); });
-        Compat.wrapVanilla(VanillaElement.BOSS_BAR, orig -> (g, d) -> { if (!bossbar.isEnabled()) orig.render(g, d); });
-        Compat.wrapVanilla(VanillaElement.STATUS_EFFECTS, orig -> (g, d) -> { if (!effects.isEnabled()) orig.render(g, d); });
-        Compat.wrapVanilla(VanillaElement.TITLE, orig -> (g, d) -> { if (!titles.isEnabled()) orig.render(g, d); });
+        Compat.wrapVanilla(VanillaElement.SCOREBOARD, orig -> (g, d) -> { if (!scoreboard.isEnabled()) orig.extractRenderState(g, d); });
+        Compat.wrapVanilla(VanillaElement.BOSS_BAR, orig -> (g, d) -> { if (!bossbar.isEnabled()) orig.extractRenderState(g, d); });
+        Compat.wrapVanilla(VanillaElement.STATUS_EFFECTS, orig -> (g, d) -> { if (!effects.isEnabled()) orig.extractRenderState(g, d); });
+        Compat.wrapVanilla(VanillaElement.TITLE, orig -> (g, d) -> { if (!titles.isEnabled()) orig.extractRenderState(g, d); });
         Compat.wrapVanilla(VanillaElement.CROSSHAIR, orig -> (g, d) -> {
             Minecraft mc = Minecraft.getInstance();
-            if (!crosshair.isEnabled() || !mc.options.getCameraType().isFirstPerson()) orig.render(g, d);
+            if (!crosshair.isEnabled() || !mc.options.getCameraType().isFirstPerson()) orig.extractRenderState(g, d);
             else drawCrosshair(g, mc);
         });
     }
@@ -85,7 +85,7 @@ public final class VisualFeatures {
         return zoomFactor < 0.99f;
     }
 
-    private static void drawCrosshair(GuiGraphics g, Minecraft mc) {
+    private static void drawCrosshair(GuiGraphicsExtractor g, Minecraft mc) {
         int cx = mc.getWindow().getGuiScaledWidth() / 2, cy = mc.getWindow().getGuiScaledHeight() / 2;
         int c = HudStyle.ACCENT;
         g.fill(cx - 5, cy, cx - 2, cy + 1, c);
@@ -157,7 +157,7 @@ public final class VisualFeatures {
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             float hp = mc.player.getHealth() / mc.player.getMaxHealth();
             if (hp >= 0.3f || mc.player.isCreative() || mc.player.isSpectator()) return 0;
             int a = (int) (40 + 40 * Math.sin(System.currentTimeMillis() / 180.0));
@@ -184,13 +184,13 @@ public final class VisualFeatures {
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             for (EquipmentSlot slot : SLOTS) {
                 ItemStack s = mc.player.getItemBySlot(slot);
                 if (!s.isDamageableItem() || (s.getMaxDamage() - s.getDamageValue()) * 20 > s.getMaxDamage()) continue;
                 String text = s.getHoverName().getString() + " is about to break";
                 int w = mc.getWindow().getGuiScaledWidth();
-                g.drawString(mc.font, text, (w - mc.font.width(text)) / 2, 24, HudStyle.WARN, true);
+                g.text(mc.font, text, (w - mc.font.width(text)) / 2, 24, HudStyle.WARN, true);
                 return 0;
             }
             return 0;

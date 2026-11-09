@@ -2,15 +2,20 @@
   "required": true,
   "minVersion": "0.8",
   "package": "dev.ember.overlay.mixin",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "client": [
     "GameRendererMixin",
+    "CameraMixin",
     "OptionInstanceAccessor",
     "ParticleEngineMixin",
     "ChatComponentMixin",
     "EntityTurnMixin",
-    "CameraMixin",
     "AbstractContainerScreenAccessor"
   ],
-  "injectors": { "defaultRequire": 0 }
+  "injectors": {
+    "defaultRequire": 0
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
 }

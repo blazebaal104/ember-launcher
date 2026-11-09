@@ -1,36 +1,44 @@
 package dev.ember.overlay.compat;
 
 import com.mojang.blaze3d.platform.InputConstants;
-import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ConnectScreen;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import org.lwjgl.glfw.GLFW;
+
+import java.nio.file.Path;
+import java.util.Locale;
+import java.util.function.Function;
 
 /**
- * EVERY Minecraft/Fabric API call that has changed between 1.21.x releases lives here.
- * Porting the overlay to another version should mean editing this file (and checking
- * mixin targets), nothing else.
+ * EVERY Minecraft/Fabric call that changes between versions lives here.
  *
- * Written for 1.21.11 with official Mojang names. Known churn points:
- *  - 1.21.6: HudElementRegistry replaced HudRenderCallback; GUI colours need alpha.
- *  - 1.21.9: KeyMapping categories became KeyMapping.Category objects; Window handle accessor renamed.
- *  - 1.21.11: ResourceLocation was renamed Identifier in Mojang's names.
- *  - 26.1: Java 25, unobfuscated jars (no mappings in Loom).
+ * Verified against Minecraft 26.3 (javap of the real client jar, see .github/introspect)
+ * and Fabric API 0.165.2+26.3 sources. Notable 26.x changes handled here:
+ *  - GuiGraphics → GuiGraphicsExtractor, render(...) → extractRenderState(...)
+ *  - Screens live on mc.gui (screen()/setScreen()), chat & hidden-HUD on mc.gui.hud
+ *  - GLFW was replaced by SDL3: key codes come from InputConstants, mouse state from MouseHandler
+ *  - KeyBindingHelper → KeyMappingHelper; STATUS_EFFECTS HUD layer → MOB_EFFECTS
  */
 public final class Compat {
     private Compat() {}
 
     public static final String MOD_ID = "ember-overlay";
+    public static final int UNBOUND = -1;
+    public static final int KEY_RSHIFT = InputConstants.KEY_RSHIFT;
+    public static final int KEY_C = InputConstants.KEY_C;
+    public static final int KEY_LALT = InputConstants.KEY_LALT;
 
     public static Identifier id(String path) {
         return Identifier.fromNamespaceAndPath(MOD_ID, path);
@@ -38,34 +46,58 @@ public final class Compat {
 
     private static KeyMapping.Category category;
 
-    public static KeyMapping key(String name, int glfwKey) {
+    public static KeyMapping key(String name, int key) {
         if (category == null) category = KeyMapping.Category.register(id("main"));
-        return KeyBindingHelper.registerKeyBinding(
-                new KeyMapping("key." + MOD_ID + "." + name, InputConstants.Type.KEYSYM, glfwKey, category));
+        return KeyMappingHelper.registerKeyMapping(
+                new KeyMapping("key." + MOD_ID + "." + name, InputConstants.Type.KEYSYM, key, category));
     }
 
-    /** Draw after the chat layer so we sit above vanilla HUD but below screens. */
+    /** Draw after chat so we sit above the vanilla HUD but below screens. */
     public static void addHudLayer(String path, HudElement element) {
         HudElementRegistry.attachElementAfter(VanillaHudElements.CHAT, id(path), element);
     }
 
-    /** Wrap a vanilla HUD element so a feature can hide or replace it. */
-    public static void wrapVanilla(VanillaElement which, java.util.function.Function<HudElement, HudElement> wrapper) {
+    public enum VanillaElement { CROSSHAIR, SCOREBOARD, BOSS_BAR, STATUS_EFFECTS, TITLE }
+
+    public static void wrapVanilla(VanillaElement which, Function<HudElement, HudElement> wrapper) {
         Identifier target = switch (which) {
             case CROSSHAIR -> VanillaHudElements.CROSSHAIR;
             case SCOREBOARD -> VanillaHudElements.SCOREBOARD;
             case BOSS_BAR -> VanillaHudElements.BOSS_BAR;
-            case STATUS_EFFECTS -> VanillaHudElements.STATUS_EFFECTS;
+            case STATUS_EFFECTS -> VanillaHudElements.MOB_EFFECTS;
             case TITLE -> VanillaHudElements.TITLE_AND_SUBTITLE;
         };
         HudElementRegistry.replaceElement(target, wrapper);
     }
 
-    public enum VanillaElement { CROSSHAIR, SCOREBOARD, BOSS_BAR, STATUS_EFFECTS, TITLE }
+    // ---------------------------------------------------------------- screens, chat, HUD state
 
-    public static boolean mouseDown(Minecraft mc, int button) {
-        return GLFW.glfwGetMouseButton(mc.getWindow().handle(), button) == GLFW.GLFW_PRESS;
+    public static Screen screen(Minecraft mc) {
+        return mc.gui.screen();
     }
+
+    public static void setScreen(Minecraft mc, Screen screen) {
+        mc.gui.setScreen(screen);
+    }
+
+    public static ChatComponent chat(Minecraft mc) {
+        return mc.gui.hud.getChat();
+    }
+
+    public static void say(Minecraft mc, String text) {
+        chat(mc).addClientSystemMessage(Component.literal(text));
+    }
+
+    /** F1 pressed, or the debug screen is open: don't draw over it. */
+    public static boolean hudHidden(Minecraft mc) {
+        return mc.gui.hud.isHidden() || mc.getDebugOverlay().showDebugScreen();
+    }
+
+    public static boolean mouseDown(Minecraft mc, boolean left) {
+        return left ? mc.mouseHandler.isLeftPressed() : mc.mouseHandler.isRightPressed();
+    }
+
+    // ---------------------------------------------------------------- world info
 
     public static String biomeName(Minecraft mc, BlockPos pos) {
         if (mc.level == null) return "";
@@ -74,11 +106,37 @@ public final class Compat {
                 .orElse("Unknown");
     }
 
+    public static long dayTime(Minecraft mc) {
+        return mc.level == null ? 0 : mc.level.getOverworldClockTime();
+    }
+
+    public static int lightAt(Minecraft mc, BlockPos pos) {
+        return mc.level == null ? 0 : mc.level.getMaxLocalRawBrightness(pos);
+    }
+
+    public static String dimension(Minecraft mc) {
+        return mc.level == null ? "" : prettify(mc.level.dimension().identifier().getPath());
+    }
+
+    // ---------------------------------------------------------------- actions
+
     /** Leave the current world/server, then join another one. */
     public static void switchServer(Minecraft mc, ServerData target) {
         if (mc.level != null) mc.disconnectWithProgressScreen();
-        Screen parent = new TitleScreen();
-        ConnectScreen.startConnecting(parent, mc, ServerAddress.parseString(target.ip), target, false, null);
+        ConnectScreen.startConnecting(new TitleScreen(), mc, ServerAddress.parseString(target.ip), target, false, null);
+    }
+
+    /** Open a file or folder with the OS. Avoids version-specific Util APIs. */
+    public static void openPath(Path path) {
+        String os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
+        String[] cmd = os.contains("win") ? new String[]{"explorer", path.toString()}
+                : os.contains("mac") ? new String[]{"open", path.toString()}
+                : new String[]{"xdg-open", path.toString()};
+        try {
+            new ProcessBuilder(cmd).start();
+        } catch (Exception e) {
+            System.err.println("[ember-overlay] could not open " + path + ": " + e);
+        }
     }
 
     public static String prettify(String path) {

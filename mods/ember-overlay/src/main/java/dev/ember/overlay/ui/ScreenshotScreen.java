@@ -1,6 +1,6 @@
 package dev.ember.overlay.ui;
 
-import net.minecraft.Util;
+import dev.ember.overlay.compat.Compat;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
@@ -45,7 +45,7 @@ public final class ScreenshotScreen extends Screen {
         page = Math.min(page, pages - 1);
         for (int i = page * per, row = 0; i < Math.min(all.size(), (page + 1) * per); i++, row++) {
             Path p = all.get(i);
-            addRenderableWidget(Button.builder(Component.literal(p.getFileName().toString()), b -> Util.getPlatform().openPath(p))
+            addRenderableWidget(Button.builder(Component.literal(p.getFileName().toString()), b -> Compat.openPath(p))
                     .bounds(x, y + row * 24, w - 64, 20).build());
             addRenderableWidget(Button.builder(Component.literal("Delete"), b -> {
                 try {
@@ -58,12 +58,12 @@ public final class ScreenshotScreen extends Screen {
         int by = height - 30;
         addRenderableWidget(Button.builder(Component.literal("Previous"), b -> { page--; rebuildWidgets(); }).bounds(x, by, 70, 20).build()).active = page > 0;
         addRenderableWidget(Button.builder(Component.literal("Next"), b -> { page++; rebuildWidgets(); }).bounds(x + 74, by, 70, 20).build()).active = page < pages - 1;
-        addRenderableWidget(Button.builder(Component.literal("Open folder"), b -> Util.getPlatform().openPath(dir())).bounds(x + w - 150, by, 80, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Open folder"), b -> Compat.openPath(dir())).bounds(x + w - 150, by, 80, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Back"), b -> onClose()).bounds(x + w - 66, by, 66, 20).build());
     }
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        Compat.setScreen(minecraft, parent);
     }
 }

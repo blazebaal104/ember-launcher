@@ -1,11 +1,12 @@
 package dev.ember.overlay.ui;
 
+import dev.ember.overlay.compat.Compat;
 import dev.ember.overlay.core.Category;
 import dev.ember.overlay.core.Config;
 import dev.ember.overlay.core.Feature;
 import dev.ember.overlay.core.FeatureRegistry;
 import dev.ember.overlay.hud.HudStyle;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
@@ -86,8 +87,8 @@ public final class OverlayScreen extends Screen {
             addRenderableWidget(Button.builder(Component.literal("Previous"), b -> { page--; rebuildWidgets(); }).bounds(left, by, 70, 20).build()).active = page > 0;
             addRenderableWidget(Button.builder(Component.literal("Next"), b -> { page++; rebuildWidgets(); }).bounds(left + 76, by, 70, 20).build()).active = page < pages - 1;
         }
-        addRenderableWidget(Button.builder(Component.literal("Servers"), b -> minecraft.setScreen(new ServerSwitcherScreen(this))).bounds(left + panelW - 236, by, 76, 20).build());
-        addRenderableWidget(Button.builder(Component.literal("Screenshots"), b -> minecraft.setScreen(new ScreenshotScreen(this))).bounds(left + panelW - 156, by, 76, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Servers"), b -> Compat.setScreen(minecraft, new ServerSwitcherScreen(this))).bounds(left + panelW - 236, by, 76, 20).build());
+        addRenderableWidget(Button.builder(Component.literal("Screenshots"), b -> Compat.setScreen(minecraft, new ScreenshotScreen(this))).bounds(left + panelW - 156, by, 76, 20).build());
         addRenderableWidget(Button.builder(Component.literal("Done"), b -> onClose()).bounds(left + panelW - 76, by, 76, 20).build());
     }
 
@@ -104,9 +105,9 @@ public final class OverlayScreen extends Screen {
     }
 
     @Override
-    public void render(GuiGraphics g, int mouseX, int mouseY, float delta) {
-        super.render(g, mouseX, mouseY, delta);
-        g.drawString(font, "Ember", (width - Math.min(520, width - 40)) / 2, 24, HudStyle.ACCENT, false);
+    public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+        super.extractRenderState(g, mouseX, mouseY, delta);
+        g.text(font, "Ember", (width - Math.min(520, width - 40)) / 2, 24, HudStyle.ACCENT, false);
     }
 
     @Override

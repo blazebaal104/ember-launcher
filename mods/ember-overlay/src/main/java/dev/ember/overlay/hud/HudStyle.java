@@ -1,7 +1,7 @@
 package dev.ember.overlay.hud;
 
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 /** Shared look for HUD readouts: translucent deepslate plate, white text, copper accent. */
 public final class HudStyle {
@@ -17,11 +17,11 @@ public final class HudStyle {
     private HudStyle() {}
 
     /** Draws a label plate and returns the height consumed (including the gap). */
-    public static int label(GuiGraphics g, Minecraft mc, String text, int x, int y) {
+    public static int label(GuiGraphicsExtractor g, Minecraft mc, String text, int x, int y) {
         int w = mc.font.width(text) + PAD * 2;
         int h = mc.font.lineHeight + PAD * 2 - 1;
         g.fill(x, y, x + w, y + h, BG);
-        g.drawString(mc.font, text, x + PAD, y + PAD, TEXT, false);
+        g.text(mc.font, text, x + PAD, y + PAD, TEXT, false);
         return h + GAP;
     }
 }

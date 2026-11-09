@@ -38,6 +38,6 @@ public final class ServerSwitcherScreen extends Screen {
 
     @Override
     public void onClose() {
-        minecraft.setScreen(parent);
+        Compat.setScreen(minecraft, parent);
     }
 }

@@ -1,5 +1,6 @@
 package dev.ember.overlay.features;
 
+import dev.ember.overlay.compat.Compat;
 import dev.ember.overlay.core.Category;
 import dev.ember.overlay.core.Config;
 import dev.ember.overlay.core.Feature;
@@ -76,14 +77,14 @@ public final class QolFeatures {
         long before = rt.totalMemory() - rt.freeMemory();
         System.gc();
         long freed = Math.max(0, before - (rt.totalMemory() - rt.freeMemory())) >> 20;
-        mc.gui.getChat().addMessage(Component.literal("[Ember] Freed " + freed + " MB"));
+        Compat.say(mc, ("[Ember] Freed " + freed + " MB"));
     }
 
     public static void copyCoordinates(Minecraft mc) {
         if (!copyCoords.isEnabled() || mc.player == null) return;
         String c = String.format(Locale.ROOT, "%d %d %d", mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ());
         mc.keyboardHandler.setClipboard(c);
-        mc.gui.getChat().addMessage(Component.literal("[Ember] Copied " + c));
+        Compat.say(mc, ("[Ember] Copied " + c));
     }
 
     /** Called from ChatComponentMixin. */
@@ -172,8 +173,8 @@ public final class QolFeatures {
             if (mc.player == null) return;
             boolean dead = mc.player.isDeadOrDying();
             if (dead && !wasDead) {
-                mc.gui.getChat().addMessage(Component.literal(String.format(Locale.ROOT, "[Ember] You died at %d %d %d in %s",
-                        mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ(), mc.level.dimension().identifier().getPath())));
+                Compat.say(mc, (String.format(Locale.ROOT, "[Ember] You died at %d %d %d in %s",
+                        mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ(), Compat.dimension(mc))));
             }
             wasDead = dead;
         }
@@ -187,7 +188,7 @@ public final class QolFeatures {
                 if (!isEnabled() || !(screen instanceof DisconnectedScreen) || lastServer == null) return;
                 ServerData target = lastServer;
                 Screens.getButtons(screen).add(Button.builder(Component.literal("Reconnect to " + target.name),
-                        b -> dev.ember.overlay.compat.Compat.switchServer(mc, target)).bounds(w / 2 - 100, h - 30, 200, 20).build());
+                        b -> Compat.switchServer(mc, target)).bounds(w / 2 - 100, h - 30, 200, 20).build());
             });
         }
     }
@@ -206,7 +207,7 @@ public final class QolFeatures {
                 box.setValue(query);
                 box.setResponder(s -> query = s.toLowerCase(Locale.ROOT));
                 Screens.getButtons(screen).add(box);
-                ScreenEvents.afterRender(screen).register((s, g, mx, my, delta) -> {
+                ScreenEvents.afterExtract(screen).register((s, g, mx, my, delta) -> {
                     if (query.isEmpty()) return;
                     for (Slot slot : cs.getMenu().slots) {
                         if (!slot.hasItem()) continue;

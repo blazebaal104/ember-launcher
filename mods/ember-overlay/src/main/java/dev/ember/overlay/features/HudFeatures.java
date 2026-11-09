@@ -8,7 +8,7 @@ import dev.ember.overlay.hud.HudStyle;
 import dev.ember.overlay.hud.TextHud;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.multiplayer.PlayerInfo;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -21,10 +21,8 @@ import net.minecraft.world.item.BowItem;
 import net.minecraft.world.item.CrossbowItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
-import org.lwjgl.glfw.GLFW;
 
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
@@ -66,7 +64,7 @@ public final class HudFeatures {
             long used = (rt.totalMemory() - rt.freeMemory()) >> 20;
             return "RAM " + used + " / " + (rt.maxMemory() >> 20) + " MB";
         }));
-        register(new TextHud("day", "Day counter", "In-game day number.", false, mc -> "Day " + (mc.level.getDayTime() / 24000L + 1)));
+        register(new TextHud("day", "Day counter", "In-game day number.", false, mc -> "Day " + (Compat.dayTime(mc) / 24000L + 1)));
         register(new TextHud("server", "Server address", "Which server you're on.", false,
                 mc -> mc.getCurrentServer() == null ? "" : mc.getCurrentServer().ip));
         register(new TextHud("held", "Held item durability", "Durability or stack size of your main-hand item.", false, mc -> {
@@ -80,8 +78,8 @@ public final class HudFeatures {
             if (!(s.getItem() instanceof BowItem) && !(s.getItem() instanceof CrossbowItem)) return "";
             return "Arrows " + countInInventory(mc.player, new ItemStack(Items.ARROW));
         }));
-        register(new TextHud("light", "Light level", "Block light at your feet (mobs spawn at 0).", false,
-                mc -> "Light " + mc.level.getBrightness(LightLayer.BLOCK, mc.player.blockPosition())));
+        register(new TextHud("light", "Light level", "Light level at your feet (hostile mobs spawn at 0).", false,
+                mc -> "Light " + Compat.lightAt(mc, mc.player.blockPosition())));
         register(new TextHud("chunk", "Chunk position", "Chunk coordinates and position inside it.", false, mc -> {
             BlockPos p = mc.player.blockPosition();
             return "Chunk " + (p.getX() >> 4) + ", " + (p.getZ() >> 4) + " [" + (p.getX() & 15) + ", " + (p.getZ() & 15) + "]";
@@ -114,7 +112,7 @@ public final class HudFeatures {
 
     // ------------------------------------------------------------------ special modules
 
-    /** Clicks per second, sampled per frame via GLFW (no input mixin needed). */
+    /** Clicks per second, sampled per frame from the mouse handler (no input mixin needed). */
     static final class Cps extends Feature implements HudModule {
         private final long[] left = new long[64], right = new long[64];
         private int li, ri;
@@ -131,9 +129,9 @@ public final class HudFeatures {
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             long now = System.currentTimeMillis();
-            boolean l = Compat.mouseDown(mc, GLFW.GLFW_MOUSE_BUTTON_LEFT), r = Compat.mouseDown(mc, GLFW.GLFW_MOUSE_BUTTON_RIGHT);
+            boolean l = Compat.mouseDown(mc, true), r = Compat.mouseDown(mc, false);
             if (l && !wasL) left[li++ & 63] = now;
             if (r && !wasR) right[ri++ & 63] = now;
             wasL = l;
@@ -147,14 +145,14 @@ public final class HudFeatures {
             super("keystrokes", "Keystrokes", Category.HUD, "Shows W A S D, jump and mouse buttons as you press them.", false);
         }
 
-        private static void key(GuiGraphics g, Minecraft mc, KeyMapping k, String label, int x, int y, int w) {
+        private static void key(GuiGraphicsExtractor g, Minecraft mc, KeyMapping k, String label, int x, int y, int w) {
             boolean down = k.isDown();
             g.fill(x, y, x + w, y + 16, down ? 0xD0E7E9EE : HudStyle.BG);
-            g.drawString(mc.font, label, x + (w - mc.font.width(label)) / 2, y + 4, down ? 0xFF191C22 : HudStyle.TEXT, false);
+            g.text(mc.font, label, x + (w - mc.font.width(label)) / 2, y + 4, down ? 0xFF191C22 : HudStyle.TEXT, false);
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             var o = mc.options;
             key(g, mc, o.keyUp, "W", x + 18, y, 16);
             key(g, mc, o.keyLeft, "A", x, y + 18, 16);
@@ -175,17 +173,17 @@ public final class HudFeatures {
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             int dy = 0;
             for (EquipmentSlot slot : SLOTS) {
                 ItemStack s = mc.player.getItemBySlot(slot);
                 if (s.isEmpty()) continue;
-                g.renderItem(s, x, y + dy);
-                g.renderItemDecorations(mc.font, s, x, y + dy);
+                g.item(s, x, y + dy);
+                g.itemDecorations(mc.font, s, x, y + dy);
                 if (s.isDamageableItem()) {
                     int left = s.getMaxDamage() - s.getDamageValue();
                     int color = left * 10 < s.getMaxDamage() ? HudStyle.DANGER : HudStyle.TEXT;
-                    g.drawString(mc.font, String.valueOf(left), x + 19, y + dy + 4, color, true);
+                    g.text(mc.font, String.valueOf(left), x + 19, y + dy + 4, color, true);
                 }
                 dy += 17;
             }
@@ -199,7 +197,7 @@ public final class HudFeatures {
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             int h = 0;
             for (MobEffectInstance e : mc.player.getActiveEffects()) {
                 String time = e.isInfiniteDuration() ? "∞" : String.format("%d:%02d", e.getDuration() / 1200, (e.getDuration() / 20) % 60);
@@ -226,7 +224,7 @@ public final class HudFeatures {
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             long ms = started >= 0 ? System.currentTimeMillis() - started : elapsed;
             return HudStyle.label(g, mc, String.format("%02d:%02d.%d", ms / 60000, (ms / 1000) % 60, (ms / 100) % 10), x, y);
         }
@@ -250,7 +248,7 @@ public final class HudFeatures {
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             return HudStyle.label(g, mc, text, x, y);
         }
     }
@@ -300,7 +298,7 @@ public final class HudFeatures {
         }
 
         @Override
-        public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+        public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
             int r = SIZE / 2, cx = mc.getWindow().getGuiScaledWidth() - r - 6, cy = r + 6;
             g.fill(cx - r, cy - r, cx + r, cy + r, HudStyle.BG);
             g.fill(cx - 1, cy - 1, cx + 2, cy + 2, HudStyle.WARN);

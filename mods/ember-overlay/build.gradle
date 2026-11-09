@@ -1,5 +1,5 @@
 plugins {
-    id "fabric-loom" version "${loom_version}"
+    id "net.fabricmc.fabric-loom" version "${loom_version}"
 }
 
 version = "${project.mod_version}+${project.minecraft_version}"
@@ -8,27 +8,42 @@ base { archivesName = "ember-overlay" }
 
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    // Official Mojang names: same names as 26.x's unobfuscated jars, so ports are mechanical.
-    mappings loom.officialMojangMappings()
-    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+loom {
+    runs {
+        client {
+            // CI self-test: `gradle runClient -Pselftest` boots the real game, checks every
+            // mixin injected (countInjections fails loudly on a miss), logs EMBER_SELFTEST_OK, exits.
+            if (project.hasProperty("selftest")) {
+                property("ember.selftest", "true")
+                property("mixin.debug.countInjections", "true")
+                property("mixin.debug.verify", "true")
+            }
+        }
+    }
 }
 
 processResources {
-    inputs.property "version", project.version
-    filesMatching("fabric.mod.json") { expand "version": project.version, "mc": project.minecraft_version }
+    def version = project.version
+    def mc = project.minecraft_version
+    inputs.property "version", version
+    filesMatching("fabric.mod.json") { expand "version": version, "mc": mc }
 }
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 25 }
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
 }
-
-tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
 
 // The launcher looks for resources/overlay/ember-overlay-<mc>.jar
 tasks.register("copyToLauncher", Copy) {
-    dependsOn remapJar
-    from remapJar.archiveFile
+    dependsOn jar
+    from jar.archiveFile
     into "../../apps/desktop/src-tauri/resources/overlay"
     rename { "ember-overlay-${project.minecraft_version}.jar" }
 }

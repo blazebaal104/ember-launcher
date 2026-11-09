@@ -15,7 +15,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.List;
 
@@ -30,28 +29,41 @@ public final class EmberOverlay implements ClientModInitializer {
         QolFeatures.registerAll();
         HudRenderer.register();
 
-        menu = Compat.key("menu", GLFW.GLFW_KEY_RIGHT_SHIFT);
-        zoom = Compat.key("zoom", GLFW.GLFW_KEY_C);
-        freelook = Compat.key("freelook", GLFW.GLFW_KEY_LEFT_ALT);
-        snapLook = Compat.key("snaplook", GLFW.GLFW_KEY_UNKNOWN);
-        stopwatch = Compat.key("stopwatch", GLFW.GLFW_KEY_UNKNOWN);
-        memory = Compat.key("memory", GLFW.GLFW_KEY_UNKNOWN);
-        servers = Compat.key("servers", GLFW.GLFW_KEY_UNKNOWN);
-        cinematic = Compat.key("smoothcam", GLFW.GLFW_KEY_UNKNOWN);
-        copyCoords = Compat.key("copycoords", GLFW.GLFW_KEY_UNKNOWN);
-        for (int i = 0; i < macros.length; i++) macros[i] = Compat.key("macro" + (i + 1), GLFW.GLFW_KEY_UNKNOWN);
+        menu = Compat.key("menu", Compat.KEY_RSHIFT);
+        zoom = Compat.key("zoom", Compat.KEY_C);
+        freelook = Compat.key("freelook", Compat.KEY_LALT);
+        snapLook = Compat.key("snaplook", Compat.UNBOUND);
+        stopwatch = Compat.key("stopwatch", Compat.UNBOUND);
+        memory = Compat.key("memory", Compat.UNBOUND);
+        servers = Compat.key("servers", Compat.UNBOUND);
+        cinematic = Compat.key("smoothcam", Compat.UNBOUND);
+        copyCoords = Compat.key("copycoords", Compat.UNBOUND);
+        for (int i = 0; i < macros.length; i++) macros[i] = Compat.key("macro" + (i + 1), Compat.UNBOUND);
 
         // Options (gamma etc.) exist once the client has started; apply saved toggles then.
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
             Config.load();
             FeatureRegistry.rebuildActiveLists();
+            if (SELFTEST) {
+                int available = 0;
+                for (Feature f : FeatureRegistry.all()) if (f.isAvailable()) available++;
+                System.out.println("EMBER_SELFTEST_OK features=" + FeatureRegistry.count() + " working=" + available);
+            }
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> Config.save());
 
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
     }
 
+    /** CI only: `gradle runClient -Pselftest` boots the game, reports, then quits. */
+    private static final boolean SELFTEST = System.getProperty("ember.selftest") != null;
+    private int selftestTicks;
+
     private void tick(Minecraft mc) {
+        if (SELFTEST && ++selftestTicks > 200) {
+            System.out.println("EMBER_SELFTEST_EXIT");
+            Runtime.getRuntime().halt(0);
+        }
         // Features that asked for ticks (only the enabled ones are in this list).
         List<Feature> ticking = FeatureRegistry.ticking();
         for (int i = 0, n = ticking.size(); i < n; i++) ticking.get(i).tick(mc);
@@ -59,12 +71,12 @@ public final class EmberOverlay implements ClientModInitializer {
         VisualFeatures.zoomHeld = zoom.isDown();
         QolFeatures.Freelook.update(mc, freelook.isDown());
 
-        while (menu.consumeClick()) if (mc.screen == null) mc.setScreen(new OverlayScreen());
+        while (menu.consumeClick()) if (Compat.screen(mc) == null) Compat.setScreen(mc, new OverlayScreen());
         while (snapLook.consumeClick()) QolFeatures.snap(mc);
         while (stopwatch.consumeClick()) if (HudFeatures.stopwatch.isEnabled()) HudFeatures.stopwatch.toggle();
         while (memory.consumeClick()) QolFeatures.freeMemory(mc);
         while (copyCoords.consumeClick()) QolFeatures.copyCoordinates(mc);
-        while (servers.consumeClick()) if (QolFeatures.serverSwitcher.isEnabled() && mc.screen == null) mc.setScreen(new ServerSwitcherScreen(null));
+        while (servers.consumeClick()) if (QolFeatures.serverSwitcher.isEnabled() && Compat.screen(mc) == null) Compat.setScreen(mc, new ServerSwitcherScreen(null));
         while (cinematic.consumeClick()) mc.options.smoothCamera = !mc.options.smoothCamera;
         for (int i = 0; i < macros.length; i++) while (macros[i].consumeClick()) QolFeatures.sendMacro(mc, i);
     }

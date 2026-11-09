@@ -3,7 +3,7 @@ package dev.ember.overlay.hud;
 import dev.ember.overlay.core.Category;
 import dev.ember.overlay.core.Feature;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 import java.util.function.Function;
 
@@ -36,7 +36,7 @@ public class TextHud extends Feature implements HudModule {
     }
 
     @Override
-    public int render(GuiGraphics g, Minecraft mc, int x, int y) {
+    public int render(GuiGraphicsExtractor g, Minecraft mc, int x, int y) {
         String text = cached;
         if (text == null || text.isEmpty()) return 0;
         return HudStyle.label(g, mc, text, x, y);

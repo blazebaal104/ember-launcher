@@ -13,7 +13,7 @@ public final class HudRenderer {
     public static void register() {
         Compat.addHudLayer("hud", (graphics, delta) -> {
             Minecraft mc = Minecraft.getInstance();
-            if (mc.options.hideGui || mc.player == null || mc.getDebugOverlay().showDebugScreen()) return;
+            if (mc.player == null || Compat.hudHidden(mc)) return;
             List<HudModule> modules = FeatureRegistry.hud();
             int y = 4;
             for (int i = 0, n = modules.size(); i < n; i++) {
