@@ -1,381 +1,294 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { FileArchive, Upload } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
+import { useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { ArrowRight, Check, CheckCircle2, ExternalLink, FileArchive, HelpCircle, Package, RotateCcw, Sparkles, Upload, XCircle } from "lucide-react";
 import type { InspectedFile, Loader as EngineLoader, ResolvedFile, TransferEntry, TransferPlan, TransferProgress } from "@ember/content-engine";
 import { transferEngine } from "../lib/clients";
-import { api, inTauri, type GameVersion } from "../lib/ipc";
+import { api, inTauri } from "../lib/ipc";
+import { open } from "../lib/links";
+import { useVersions } from "../lib/queries";
 import { useApp } from "../state";
+import { Badge, Button, Glass, Ring, inputClass } from "../components/ui";
 import InspectWorker from "../workers/inspect.worker?worker";
 
-type Step = "drop" | "analyzing" | "review" | "installing" | "done";
+type Step = 0 | 1 | 2 | 3;
+const STEPS = ["Add mods", "Choose target", "Review", "Done"];
+const PHASE: Record<TransferProgress["phase"], string> = { identify: "Identifying your mods", resolve: "Finding new builds", fallback: "Looking for replacements", dependencies: "Adding required libraries", done: "Done" };
 
 export function Transfer() {
-  const { instances, refresh } = useApp();
-  const [step, setStep] = useState<Step>("drop");
+  const { instances, refresh, toast } = useApp();
+  const versions = useVersions();
+  const navigate = useNavigate();
+  const [step, setStep] = useState<Step>(0);
   const [files, setFiles] = useState<InspectedFile[]>([]);
   const [reading, setReading] = useState(false);
-  const [versions, setVersions] = useState<GameVersion[]>([]);
-  const [into, setInto] = useState<string>("new");
+  const [into, setInto] = useState("new");
   const [gameVersion, setGameVersion] = useState("");
   const [loader, setLoader] = useState<EngineLoader>("fabric");
   const [progress, setProgress] = useState<TransferProgress | null>(null);
   const [plan, setPlan] = useState<TransferPlan | null>(null);
   const [choices, setChoices] = useState<Record<number, number | null>>({});
-  const [result, setResult] = useState<{ installed: number; manual: ResolvedFile[]; instanceName: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
+  const [result, setResult] = useState<{ installed: number; manual: ResolvedFile[]; instanceId: string; name: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    api.listVersions().then((v) => {
-      setVersions(v);
-      setGameVersion(v.find((x) => x.channel === "release")?.id ?? "");
-    });
-  }, []);
-
+  const releases = (versions.data ?? []).filter((v) => v.channel === "release");
   const existing = instances.find((i) => i.id === into);
-  const target = { gameVersion: existing?.gameVersion ?? gameVersion, loader: (existing && existing.loader !== "vanilla" ? existing.loader : loader) as EngineLoader };
+  const target = { gameVersion: existing?.gameVersion ?? (gameVersion || releases[0]?.id || ""), loader: (existing && existing.loader !== "vanilla" ? existing.loader : loader) as EngineLoader };
 
-  // ---- 1. read + inspect in a worker
   const ingest = async (list: FileList | File[]) => {
     const picked = [...list].filter((f) => /\.(jar|zip|mrpack)$/i.test(f.name));
-    if (!picked.length) return;
+    if (!picked.length) return toast({ title: "Nothing to read", body: "Drop .jar files, a zipped mods folder or a .mrpack.", tone: "error" });
     setReading(true);
-    setError(null);
     const uploads = await Promise.all(picked.map(async (f) => ({ name: f.name, bytes: new Uint8Array(await f.arrayBuffer()) })));
     const worker = new InspectWorker();
     worker.onmessage = (e: MessageEvent<{ ok: boolean; result?: InspectedFile[]; error?: string }>) => {
-      if (e.data.ok) setFiles((prev) => dedupe([...prev, ...e.data.result!]));
-      else setError(`Couldn't read those files: ${e.data.error}`);
+      if (e.data.ok) {
+        setFiles((prev) => {
+          const seen = new Set(prev.map((f) => f.sha1 || f.fileName));
+          return [...prev, ...e.data.result!.filter((f) => !seen.has(f.sha1 || f.fileName))];
+        });
+        setStep(1);
+      } else toast({ title: "Couldn't read those files", body: e.data.error, tone: "error" });
       setReading(false);
       worker.terminate();
     };
     worker.postMessage({ files: uploads }, uploads.map((u) => u.bytes.buffer));
   };
 
-  // ---- 2. build the plan
   const analyze = async () => {
-    setStep("analyzing");
-    setError(null);
+    setProgress({ phase: "identify", done: 0, total: files.length });
     try {
-      const engine = transferEngine(setProgress);
-      setPlan(await engine.plan(files, target));
+      const p = await transferEngine(setProgress).plan(files, target);
+      setPlan(p);
       setChoices({});
-      setStep("review");
+      setStep(2);
     } catch (e) {
-      if (!inTauri) {
-        setPlan(demoPlan(files, target));
-        setStep("review");
-        return;
-      }
-      setError(`The lookup failed: ${e}`);
-      setStep("drop");
+      toast({ title: "The lookup failed", body: String(e), tone: "error" });
+    } finally {
+      setProgress(null);
     }
   };
 
-  // ---- 3. install
   const install = async () => {
     if (!plan) return;
-    setStep("installing");
+    setInstalling(true);
     try {
-      const engine = transferEngine(setProgress);
-      const final = inTauri ? await engine.finalize(plan, choices) : demoFinal(plan, choices);
+      const final = await transferEngine(setProgress).finalize(plan, choices);
       let instanceId = existing?.id;
-      let instanceName = existing?.name ?? "";
+      let name = existing?.name ?? "";
       if (!instanceId) {
-        instanceName = `Migrated to ${target.gameVersion}`;
-        const created = await api.createInstance({ name: instanceName, gameVersion: target.gameVersion, loader: target.loader === "forge" ? "neoforge" : target.loader, performanceBundle: true, overlay: true });
+        name = `Migrated to ${target.gameVersion}`;
+        const created = await api.createInstance({ name, gameVersion: target.gameVersion, loader: target.loader === "forge" ? "neoforge" : target.loader, performanceBundle: true, overlay: true });
         instanceId = created.instance.id;
       }
-      const auto = final.filter((f) => f.url);
-      const installed = await api.installFiles(instanceId, auto);
-      setResult({ installed, manual: final.filter((f) => !f.url), instanceName });
+      const installed = await api.installFiles(instanceId, final.filter((f) => f.url));
+      setResult({ installed, manual: final.filter((f) => !f.url), instanceId, name });
       await refresh();
-      setStep("done");
+      setStep(3);
     } catch (e) {
-      setError(`Install stopped: ${e}`);
-      setStep("review");
+      toast({ title: "Install stopped", body: String(e), tone: "error" });
+    } finally {
+      setInstalling(false);
+      setProgress(null);
     }
   };
 
   const groups = useMemo(() => {
     const g = { matched: [] as Array<[number, TransferEntry]>, alternative: [] as Array<[number, TransferEntry]>, obsolete: [] as Array<[number, TransferEntry]>, missing: [] as Array<[number, TransferEntry]> };
-    plan?.entries.forEach((e, i) => {
-      if (e.status === "matched") g.matched.push([i, e]);
-      else if (e.status === "alternative") g.alternative.push([i, e]);
-      else if (e.status === "obsolete") g.obsolete.push([i, e]);
-      else g.missing.push([i, e]);
-    });
+    plan?.entries.forEach((e, i) => (e.status === "matched" ? g.matched : e.status === "alternative" ? g.alternative : e.status === "obsolete" ? g.obsolete : g.missing).push([i, e]));
     return g;
   }, [plan]);
-
-  const installCount = groups.matched.length + groups.alternative.filter(([i]) => choices[i] !== null).length;
+  const installCount = groups.matched.length + groups.alternative.filter(([i]) => choices[i] !== null).length + (plan?.dependencies.length ?? 0);
+  const reset = () => { setStep(0); setFiles([]); setPlan(null); setResult(null); };
 
   return (
-    <div className="mx-auto max-w-5xl px-8 py-8">
-      <header className="mb-8">
-        <h1 className="text-[28px] font-bold tracking-tight">Move mods to a new version</h1>
-        <p className="mt-1 max-w-[68ch] text-muted">
-          Drop your old mods folder, a zip, or a modpack. Ember finds each mod's build for the version you pick and suggests the closest replacement when one doesn't exist.
-        </p>
-      </header>
+    <div className="mx-auto max-w-5xl px-6 pb-28 pt-2">
+      <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
+        <h1 className="text-[30px] font-bold tracking-tight">Transfer mods</h1>
+        <p className="mt-1 max-w-[68ch] text-muted">Bring your mods to a new Minecraft version. Ember identifies every file, finds its new build, and suggests the closest replacement when a mod was abandoned.</p>
+      </motion.header>
 
-      {/* This really is a sequence, so the steps are numbered. */}
-      <ol className="mb-8 flex gap-6 text-[14px]" aria-label="Progress">
-        {["Add mods", "Choose target", "Review matches", "Install"].map((label, i) => {
-          const current = { drop: files.length ? 1 : 0, analyzing: 2, review: 2, installing: 3, done: 3 }[step];
-          return (
-            <li key={label} className={`flex items-center gap-2 ${i <= current ? "text-text" : "text-muted"}`} aria-current={i === current ? "step" : undefined}>
-              <span className={`grid size-6 place-items-center rounded-full text-[12px] font-bold ${i < current ? "bg-copper text-ink-950" : i === current ? "ring-2 ring-copper" : "bg-slate-raised"}`}>{i + 1}</span>
-              {label}
-            </li>
-          );
-        })}
+      {/* animated stepper (this content really is a sequence) */}
+      <ol className="glass mb-6 flex items-center gap-2 rounded-panel p-3" aria-label="Progress">
+        {STEPS.map((label, i) => (
+          <li key={label} className="flex flex-1 items-center gap-2" aria-current={i === step ? "step" : undefined}>
+            <motion.span animate={{ backgroundColor: i < step ? "var(--accent)" : i === step ? "color-mix(in oklab, var(--accent) 22%, transparent)" : "var(--raised)", scale: i === step ? 1.1 : 1 }} className={`grid size-8 shrink-0 place-items-center rounded-full text-[13px] font-bold ${i < step ? "text-on-accent" : i === step ? "text-copper" : "text-muted"}`}>
+              {i < step ? <Check className="size-4" /> : i + 1}
+            </motion.span>
+            <span className={`text-[14px] ${i <= step ? "text-text" : "text-muted"}`}>{label}</span>
+            {i < STEPS.length - 1 && <div className="mx-1 h-0.5 flex-1 overflow-hidden rounded-full bg-slate-line"><motion.div className="h-full bg-copper" animate={{ width: i < step ? "100%" : "0%" }} transition={{ duration: 0.5 }} /></div>}
+          </li>
+        ))}
       </ol>
 
-      {error && <p className="mb-4 rounded-card bg-redstone/10 px-4 py-3 text-[14px] text-redstone">{error}</p>}
-
-      {(step === "drop" || step === "analyzing") && (
-        <div className="space-y-6">
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              ingest(e.dataTransfer.files);
-            }}
-            className={`flex flex-col items-center justify-center gap-3 rounded-panel border-2 border-dashed px-6 py-12 text-center transition-colors ${dragging ? "border-copper bg-copper/5" : "border-slate-line bg-slate-surface"}`}
-          >
-            <Upload className="size-7 text-copper" aria-hidden />
-            <p className="text-[16px] font-medium">{reading ? "Reading files" : "Drop .jar files, a zipped mods folder, or a .mrpack here"}</p>
-            <button type="button" onClick={() => input.current?.click()} className="rounded-card bg-slate-raised px-4 py-2 text-[14px] hover:bg-slate-line">
-              Choose files
-            </button>
-            <input ref={input} type="file" multiple accept=".jar,.zip,.mrpack" className="sr-only" onChange={(e) => e.target.files && ingest(e.target.files)} />
-          </div>
-
-          {files.length > 0 && (
-            <>
-              <div className="rounded-panel border border-slate-line bg-slate-surface p-5">
-                <div className="mb-3 flex items-baseline justify-between">
-                  <h2 className="text-[16px] font-medium">{files.length} mods found</h2>
-                  <button type="button" onClick={() => setFiles([])} className="text-[13px] text-muted hover:text-text">Clear</button>
-                </div>
-                <ul className="grid max-h-48 grid-cols-2 gap-x-6 gap-y-1 overflow-auto text-[14px] text-muted">
-                  {files.map((f) => (
-                    <li key={f.sha1 || f.fileName} className="flex items-center gap-2 truncate">
-                      <FileArchive className="size-3.5 shrink-0" aria-hidden />
-                      <span className="truncate text-text">{f.meta?.name ?? f.fileName}</span>
-                      {f.meta?.version && <span className="shrink-0">{f.meta.version}</span>}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              <div className="flex flex-wrap items-end gap-3 rounded-panel border border-slate-line bg-slate-surface p-5">
-                <label className="flex flex-col gap-1.5">
-                  <span className="text-[14px] text-muted">Install into</span>
-                  <select value={into} onChange={(e) => setInto(e.target.value)} className="rounded-chip bg-slate-raised px-3 py-2 text-[14px]">
-                    <option value="new">A new instance</option>
-                    {instances.map((i) => (
-                      <option key={i.id} value={i.id}>
-                        {i.name} ({i.gameVersion})
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {!existing && (
-                  <>
-                    <label className="flex flex-col gap-1.5">
-                      <span className="text-[14px] text-muted">Minecraft version</span>
-                      <select value={gameVersion} onChange={(e) => setGameVersion(e.target.value)} className="rounded-chip bg-slate-raised px-3 py-2 text-[14px]">
-                        {versions.map((v) => (
-                          <option key={v.id} value={v.id}>{v.id}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="flex flex-col gap-1.5">
-                      <span className="text-[14px] text-muted">Loader</span>
-                      <select value={loader} onChange={(e) => setLoader(e.target.value as EngineLoader)} className="rounded-chip bg-slate-raised px-3 py-2 text-[14px]">
-                        <option value="fabric">Fabric</option>
-                        <option value="quilt">Quilt</option>
-                        <option value="neoforge">NeoForge</option>
-                      </select>
-                    </label>
-                  </>
-                )}
-                <button type="button" onClick={analyze} disabled={step === "analyzing" || !target.gameVersion} className="ml-auto rounded-card bg-copper px-5 py-2.5 font-medium text-ink-950 disabled:opacity-60">
-                  {step === "analyzing" ? progressLabel(progress) : `Find builds for ${target.gameVersion}`}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      )}
-
-      {(step === "review" || step === "installing") && plan && (
-        <div className="space-y-8">
-          <Section title={`Ready to install (${groups.matched.length})`} hint="Same mod, built for your target version.">
-            {groups.matched.map(([i, e]) => (
-              <Row key={i} entry={e}>
-                <span className="text-[13px] text-copper">{e.resolved?.versionNumber}</span>
-                {e.note && <span className="block text-[12px] text-gold">{e.note}</span>}
-              </Row>
-            ))}
-          </Section>
-
-          {groups.alternative.length > 0 && (
-            <Section title={`Needs your pick (${groups.alternative.length})`} hint={`No build for ${plan.target.gameVersion}. These are the closest replacements we found.`}>
-              {groups.alternative.map(([i, e]) => (
-                <li key={i} className="px-5 py-4">
-                  <p className="text-[15px] font-medium">{name(e)}</p>
-                  <fieldset className="mt-2 space-y-1.5">
-                    <legend className="sr-only">Replacement for {name(e)}</legend>
-                    {e.alternatives.map((a, ai) => (
-                      <label key={a.file.projectId} className="flex cursor-pointer items-start gap-3 rounded-card px-3 py-2 hover:bg-slate-raised has-[:checked]:bg-slate-raised">
-                        <input type="radio" name={`alt-${i}`} checked={(choices[i] ?? 0) === ai} onChange={() => setChoices((c) => ({ ...c, [i]: ai }))} className="mt-1 accent-copper" />
-                        <span className="flex-1">
-                          <span className="flex items-center gap-2 text-[14px]">
-                            {a.file.projectName}
-                            <span className="rounded-chip bg-slate-line px-1.5 py-0.5 text-[12px] text-muted">{{ successor: "Successor", fork: "Continued fork", similar: "Similar" }[a.kind]}</span>
-                          </span>
-                          <span className="block text-[13px] text-muted">{a.reason}</span>
-                        </span>
-                        <Confidence value={a.confidence} />
-                      </label>
-                    ))}
-                    <label className="flex cursor-pointer items-center gap-3 rounded-card px-3 py-2 text-[14px] text-muted hover:bg-slate-raised">
-                      <input type="radio" name={`alt-${i}`} checked={choices[i] === null} onChange={() => setChoices((c) => ({ ...c, [i]: null }))} className="accent-copper" />
-                      Skip this mod
-                    </label>
-                  </fieldset>
-                </li>
-              ))}
-            </Section>
-          )}
-
-          {groups.obsolete.length > 0 && (
-            <Section title={`Not needed anymore (${groups.obsolete.length})`} hint="Their fixes are now part of the game.">
-              {groups.obsolete.map(([i, e]) => (
-                <Row key={i} entry={e}>
-                  <span className="text-[13px] text-muted">{e.note}</span>
-                </Row>
-              ))}
-            </Section>
-          )}
-
-          {groups.missing.length > 0 && (
-            <Section title={`Couldn't carry over (${groups.missing.length})`} hint="Check these by hand. Unknown files may be private builds or renamed jars.">
-              {groups.missing.map(([i, e]) => (
-                <Row key={i} entry={e}>
-                  <span className="text-[13px] text-redstone">{e.status === "unknown" ? "Not found on Modrinth or CurseForge" : e.note ?? "No build or alternative"}</span>
-                </Row>
-              ))}
-            </Section>
-          )}
-
-          {plan.dependencies.length > 0 && <p className="text-[14px] text-muted">Also adding required libraries: {plan.dependencies.map((d) => d.projectName).join(", ")}.</p>}
-
-          <div className="sticky bottom-0 -mx-8 flex items-center justify-between border-t border-slate-line bg-slate-base/95 px-8 py-4 backdrop-blur">
-            <button type="button" onClick={() => setStep("drop")} className="text-[14px] text-muted hover:text-text">Back</button>
-            <button type="button" onClick={install} disabled={step === "installing" || installCount === 0} className="rounded-card bg-copper px-6 py-3 font-medium text-ink-950 disabled:opacity-60">
-              {step === "installing" ? "Installing" : `Install ${installCount} mods ${existing ? `into ${existing.name}` : `into a new ${target.gameVersion} instance`}`}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {step === "done" && result && (
-        <div className="rounded-panel border border-slate-line bg-slate-surface p-8">
-          <h2 className="font-pixel text-[32px]">Migrated</h2>
-          <p className="mt-2 text-muted">
-            {result.installed} mods installed into <span className="text-text">{result.instanceName}</span>.
-          </p>
-          {result.manual.length > 0 && (
-            <div className="mt-5">
-              <p className="text-[14px] text-gold">These authors only allow downloads from their own page:</p>
-              <ul className="mt-2 space-y-1">
-                {result.manual.map((f) => (
-                  <li key={f.projectId}>
-                    <button type="button" className="text-[14px] text-copper underline-offset-2 hover:underline" onClick={() => (inTauri ? openUrl(f.pageUrl) : window.open(f.pageUrl))}>
-                      Download {f.projectName}
-                    </button>
-                  </li>
+      <AnimatePresence mode="wait">
+        {step <= 1 && (
+          <motion.div key="drop" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="flex flex-col gap-4">
+            <motion.div
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => { e.preventDefault(); setDragging(false); ingest(e.dataTransfer.files); }}
+              animate={{ scale: dragging ? 1.015 : 1, borderColor: dragging ? "var(--accent)" : "var(--line)" }}
+              className="glass relative flex flex-col items-center justify-center gap-4 overflow-hidden rounded-panel border-2 border-dashed px-6 py-14 text-center"
+            >
+              <motion.div className="pointer-events-none absolute inset-0 bg-copper/10" animate={{ opacity: dragging ? 1 : 0 }} />
+              <div className="relative h-20 w-40">
+                {[0, 1, 2].map((n) => (
+                  <motion.div key={n} className="absolute left-1/2 top-0 grid size-14 place-items-center rounded-card bg-slate-raised ring-1 ring-slate-line" style={{ x: "-50%" }} animate={{ x: ["-50%", `${-50 + (n - 1) * 70}%`, "-50%"], y: [0, n === 1 ? -12 : 0, 0], rotate: [0, (n - 1) * 10, 0] }} transition={{ duration: 3, repeat: Infinity, delay: n * 0.15, ease: "easeInOut" }}>
+                    <FileArchive className="size-7 text-copper" />
+                  </motion.div>
                 ))}
-              </ul>
+              </div>
+              <p className="relative text-[17px] font-bold">{reading ? "Reading your files…" : "Drop your old mods here"}</p>
+              <p className="relative text-[14px] text-muted">.jar files, a zipped mods folder, or a modpack (.mrpack, CurseForge zip)</p>
+              <Button className="relative" icon={Upload} onClick={() => input.current?.click()} loading={reading}>Choose files</Button>
+              <input ref={input} type="file" multiple accept=".jar,.zip,.mrpack" className="sr-only" onChange={(e) => e.target.files && ingest(e.target.files)} />
+            </motion.div>
+
+            {files.length > 0 && (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 md:grid-cols-[1fr_320px]">
+                <Glass className="p-5">
+                  <div className="mb-3 flex items-baseline justify-between"><h2 className="text-[16px] font-bold">{files.length} mods found</h2><button type="button" onClick={reset} className="text-[13px] text-muted hover:text-text">Clear</button></div>
+                  <ul className="grid max-h-64 grid-cols-2 gap-1.5 overflow-auto">
+                    {files.map((f, i) => (
+                      <motion.li key={f.sha1 || f.fileName} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: Math.min(i, 30) * 0.015 }} className="flex items-center gap-2 truncate rounded-chip bg-slate-raised/60 px-2.5 py-1.5 text-[13px]">
+                        <FileArchive className="size-3.5 shrink-0 text-copper" />
+                        <span className="truncate">{f.meta?.name ?? f.fileName}</span>
+                        {f.meta?.version && <span className="shrink-0 text-muted">{f.meta.version}</span>}
+                      </motion.li>
+                    ))}
+                  </ul>
+                </Glass>
+                <Glass className="flex flex-col gap-3 p-5">
+                  <h2 className="text-[16px] font-bold">Move them to</h2>
+                  <select value={into} onChange={(e) => setInto(e.target.value)} className={inputClass} aria-label="Install into">
+                    <option value="new">A new instance</option>
+                    {instances.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.gameVersion})</option>)}
+                  </select>
+                  {!existing && (
+                    <>
+                      <select value={target.gameVersion} onChange={(e) => setGameVersion(e.target.value)} className={inputClass} aria-label="Minecraft version">{releases.map((v) => <option key={v.id} value={v.id}>Minecraft {v.id}</option>)}</select>
+                      <select value={loader} onChange={(e) => setLoader(e.target.value as EngineLoader)} className={inputClass} aria-label="Loader">
+                        <option value="fabric">Fabric</option><option value="quilt">Quilt</option><option value="neoforge">NeoForge</option>
+                      </select>
+                    </>
+                  )}
+                  <Button variant="primary" size="lg" className="mt-auto" disabled={!!progress || !target.gameVersion} onClick={analyze} icon={progress ? undefined : Sparkles} loading={!!progress}>
+                    {progress ? `${PHASE[progress.phase]}${progress.total > 1 ? ` ${progress.done}/${progress.total}` : ""}` : `Find builds for ${target.gameVersion}`}
+                  </Button>
+                </Glass>
+              </motion.div>
+            )}
+          </motion.div>
+        )}
+
+        {step === 2 && plan && (
+          <motion.div key="review" initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className="flex flex-col gap-6">
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {[
+                { n: groups.matched.length, label: "Ready", tone: "text-copper", icon: CheckCircle2 },
+                { n: groups.alternative.length, label: "Need your pick", tone: "text-gold", icon: HelpCircle },
+                { n: groups.obsolete.length, label: "No longer needed", tone: "text-muted", icon: Sparkles },
+                { n: groups.missing.length, label: "Couldn't carry over", tone: "text-redstone", icon: XCircle },
+              ].map((s, i) => (
+                <motion.div key={s.label} initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: i * 0.06 }} className="glass rounded-panel p-4">
+                  <s.icon className={`size-5 ${s.tone}`} />
+                  <p className="mt-1 text-[28px] font-bold tabular-nums">{s.n}</p>
+                  <p className="text-[13px] text-muted">{s.label}</p>
+                </motion.div>
+              ))}
             </div>
-          )}
-          <button type="button" onClick={() => { setStep("drop"); setFiles([]); setPlan(null); }} className="mt-6 rounded-card bg-slate-raised px-4 py-2 text-[14px]">
-            Move another set
-          </button>
-        </div>
-      )}
+
+            {groups.alternative.length > 0 && (
+              <Section title="Pick a replacement" hint={`These have no build for ${plan.target.gameVersion}. Ember found the closest matches: pick one or skip.`}>
+                {groups.alternative.map(([i, e]) => (
+                  <motion.li key={i} layout className="glass rounded-panel p-4">
+                    <p className="mb-3 flex items-center gap-2 text-[15px] font-bold"><span className="text-muted line-through decoration-redstone/50">{label(e)}</span><ArrowRight className="size-4 text-copper" /> ?</p>
+                    <div className="grid gap-2 md:grid-cols-2">
+                      {e.alternatives.map((a, ai) => {
+                        const picked = (choices[i] ?? 0) === ai;
+                        return (
+                          <motion.button key={a.file.projectId} type="button" whileHover={{ y: -2 }} onClick={() => setChoices((c) => ({ ...c, [i]: ai }))} className={`flex items-center gap-3 rounded-card border p-3 text-left ${picked ? "border-copper bg-copper/10" : "border-slate-line hover:border-muted"}`}>
+                            <Ring value={a.confidence} />
+                            <span className="min-w-0 flex-1">
+                              <span className="flex items-center gap-2 text-[14px] font-medium">{a.file.projectName}<Badge tone={a.kind === "successor" ? "accent" : a.kind === "fork" ? "gold" : "neutral"}>{{ successor: "Successor", fork: "Continued fork", similar: "Similar" }[a.kind]}</Badge></span>
+                              <span className="block text-[12px] text-muted">{a.reason}</span>
+                            </span>
+                            {picked && <Check className="size-5 shrink-0 text-copper" />}
+                          </motion.button>
+                        );
+                      })}
+                      <button type="button" onClick={() => setChoices((c) => ({ ...c, [i]: null }))} className={`rounded-card border p-3 text-left text-[14px] ${choices[i] === null ? "border-copper bg-copper/10" : "border-dashed border-slate-line text-muted hover:border-muted"}`}>Skip this mod</button>
+                    </div>
+                  </motion.li>
+                ))}
+              </Section>
+            )}
+
+            <Section title="Ready to install" hint="Same mod, built for your target version.">
+              <div className="grid gap-2 md:grid-cols-2">
+                {groups.matched.map(([i, e], n) => (
+                  <motion.li key={i} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: Math.min(n, 20) * 0.02 }} className="glass flex items-center gap-3 rounded-card p-3">
+                    <CheckCircle2 className="size-5 shrink-0 text-copper" />
+                    <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-medium">{label(e)}</span><span className="block truncate text-[12px] text-muted">{e.resolved?.versionNumber}</span></span>
+                    {e.note && <Badge tone="gold">Manual download</Badge>}
+                  </motion.li>
+                ))}
+              </div>
+            </Section>
+
+            {groups.obsolete.length > 0 && (
+              <Section title="No longer needed" hint="Their improvements are part of Minecraft now.">
+                {groups.obsolete.map(([i, e]) => <li key={i} className="glass rounded-card p-3 text-[14px]"><b>{label(e)}</b> <span className="text-muted">{e.note}</span></li>)}
+              </Section>
+            )}
+            {groups.missing.length > 0 && (
+              <Section title="Couldn't carry over" hint="Check these by hand. Unknown files may be private builds or renamed jars.">
+                {groups.missing.map(([i, e]) => <li key={i} className="glass flex items-center justify-between gap-3 rounded-card p-3 text-[14px]"><span className="truncate">{label(e)}</span><span className="shrink-0 text-[12px] text-redstone">{e.status === "unknown" ? "Not on Modrinth or CurseForge" : e.note ?? "No build or replacement"}</span></li>)}
+              </Section>
+            )}
+            {plan.dependencies.length > 0 && <p className="text-[14px] text-muted"><Package className="mr-1 inline size-4 text-copper" /> Also adding required libraries: {plan.dependencies.map((d) => d.projectName).join(", ")}.</p>}
+
+            <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="glass glass-strong fixed bottom-5 left-1/2 z-30 flex w-[min(720px,90vw)] -translate-x-1/2 items-center gap-3 rounded-panel p-3 pl-5">
+              <span className="flex-1 text-[14px]">{installCount} files → {existing ? existing.name : `new ${target.gameVersion} instance`}</span>
+              <Button variant="ghost" icon={RotateCcw} onClick={() => setStep(1)}>Back</Button>
+              <Button variant="primary" loading={installing} disabled={installCount === 0} onClick={install}>Install {installCount}</Button>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {step === 3 && result && (
+          <motion.div key="done" initial={{ opacity: 0, scale: 0.96 }} animate={{ opacity: 1, scale: 1 }} className="glass flex flex-col items-center gap-4 rounded-panel p-10 text-center">
+            <motion.div initial={{ scale: 0, rotate: -90 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 260, damping: 14 }} className="grid size-20 place-items-center rounded-full bg-copper text-on-accent"><Check className="size-10" /></motion.div>
+            <h2 className="font-pixel text-[34px]">Migrated</h2>
+            <p className="text-muted">{result.installed} files installed into <b className="text-text">{result.name}</b>.</p>
+            {result.manual.length > 0 && (
+              <div className="rounded-card bg-gold/10 p-4 text-left">
+                <p className="text-[14px] text-gold">These authors only allow downloads from their own page:</p>
+                <ul className="mt-2 space-y-1">{result.manual.map((f) => <li key={f.projectId}><button type="button" className="flex items-center gap-1 text-[14px] text-copper hover:underline" onClick={() => open(f.pageUrl)}><ExternalLink className="size-3.5" /> {f.projectName}</button></li>)}</ul>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button onClick={reset} icon={RotateCcw}>Move another set</Button>
+              <Button variant="primary" onClick={() => navigate(`/instance/${result.instanceId}`)}>Open instance</Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      {!inTauri && step === 0 && <p className="mt-4 text-[12px] text-muted">Demo mode: lookups need internet access to Modrinth.</p>}
     </div>
   );
 }
+
+const label = (e: TransferEntry) => e.identifiedAs?.name ?? e.input.meta?.name ?? e.input.fileName;
 
 function Section({ title, hint, children }: { title: string; hint: string; children: React.ReactNode }) {
   return (
     <section>
       <h2 className="text-[18px] font-bold">{title}</h2>
       <p className="mb-3 text-[14px] text-muted">{hint}</p>
-      <ul className="divide-y divide-slate-line rounded-panel border border-slate-line bg-slate-surface">{children}</ul>
+      <ul className="flex flex-col gap-2">{children}</ul>
     </section>
   );
-}
-
-function Row({ entry, children }: { entry: TransferEntry; children: React.ReactNode }) {
-  return (
-    <li className="flex items-center justify-between gap-4 px-5 py-3">
-      <span className="min-w-0">
-        <span className="block truncate text-[15px]">{name(entry)}</span>
-        <span className="block truncate text-[12px] text-muted">{entry.input.fileName}</span>
-      </span>
-      <span className="shrink-0 text-right">{children}</span>
-    </li>
-  );
-}
-
-function Confidence({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  return (
-    <span className="flex w-28 shrink-0 items-center gap-2" title={`${pct}% match`}>
-      <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-line">
-        <span className="block h-full rounded-full bg-copper" style={{ width: `${pct}%` }} />
-      </span>
-      <span className="w-9 text-right text-[12px] tabular-nums text-muted">{pct}%</span>
-    </span>
-  );
-}
-
-const name = (e: TransferEntry) => e.identifiedAs?.name ?? e.input.meta?.name ?? e.input.fileName;
-
-function progressLabel(p: TransferProgress | null) {
-  if (!p) return "Starting";
-  const what = { identify: "Identifying mods", resolve: "Finding builds", fallback: "Looking for replacements", dependencies: "Checking libraries", done: "Done" }[p.phase];
-  return p.total > 1 ? `${what} ${p.done}/${p.total}` : what;
-}
-
-function dedupe(files: InspectedFile[]) {
-  const seen = new Set<string>();
-  return files.filter((f) => (seen.has(f.sha1) ? false : (seen.add(f.sha1), true)));
-}
-
-// ---------------------------------------------------------- browser demo only
-function demoPlan(files: InspectedFile[], target: { gameVersion: string; loader: EngineLoader }): TransferPlan {
-  const fake = (n: string): ResolvedFile => ({ source: "modrinth", projectId: n, projectName: n, versionId: n, versionNumber: `${n.toLowerCase()}-${target.gameVersion}`, fileName: `${n}.jar`, url: "https://cdn.modrinth.com/x", pageUrl: "https://modrinth.com" });
-  const entries: TransferEntry[] = files.map((input, i) => {
-    const kind = i % 5;
-    if (kind === 3) return { input, status: "alternative", alternatives: [{ file: fake("Zoomify"), confidence: 0.95, kind: "successor", reason: "Ok Zoomer is no longer updated; Zoomify is maintained" }, { file: fake("Logical Zoom"), confidence: 0.54, kind: "similar", reason: "same categories, similar description" }] };
-    if (kind === 4) return { input, status: "obsolete", alternatives: [], note: "Vanilla already does this" };
-    return { input, status: "matched", resolved: fake(input.meta?.name ?? input.fileName), alternatives: [] };
-  });
-  return { target, entries, dependencies: [fake("Fabric API")], stats: { matched: 0, alternative: 0, obsolete: 0, unavailable: 0, unknown: 0 } };
-}
-function demoFinal(plan: TransferPlan, choices: Record<number, number | null>): ResolvedFile[] {
-  return plan.entries.flatMap((e, i) => (e.status === "matched" && e.resolved ? [e.resolved] : e.status === "alternative" && choices[i] !== null ? [e.alternatives[choices[i] ?? 0]!.file] : []));
 }

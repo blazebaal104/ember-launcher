@@ -50,6 +50,17 @@ export interface MrProject {
   loaders: string[];
   icon_url: string | null;
   source_url?: string | null;
+  /** Full Markdown description (the "explanation" shown in the launcher). */
+  body?: string;
+  gallery?: Array<{ url: string; raw_url?: string; title?: string | null; description?: string | null; featured?: boolean }>;
+  issues_url?: string | null;
+  wiki_url?: string | null;
+  discord_url?: string | null;
+  license?: { id: string; name: string } | null;
+  client_side?: "required" | "optional" | "unsupported" | "unknown";
+  server_side?: "required" | "optional" | "unsupported" | "unknown";
+  team?: string;
+  published?: string;
 }
 
 export interface MrSearchHit {

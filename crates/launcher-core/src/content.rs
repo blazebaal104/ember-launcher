@@ -138,7 +138,7 @@ fn inspect_archive(path: &Path) -> (String, ArchiveInfo) {
         info.version = j["version"].as_str().map(String::from);
         info.description = j["description"].as_str().map(String::from);
         info.authors = j["authors"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().or(x["name"].as_str()).map(String::from)).collect()).unwrap_or_default();
-        icon_path = j["icon"].as_str().map(String::from).or_else(|| j["icon"].as_object().and_then(|o| o.values().last()).and_then(|v| v.as_str()).map(String::from));
+        icon_path = j["icon"].as_str().map(String::from).or_else(|| j["icon"].as_object().and_then(|o| o.values().next_back()).and_then(|v| v.as_str()).map(String::from));
     } else if let Some(t) = read(&mut zip, "META-INF/neoforge.mods.toml").or_else(|| read(&mut zip, "META-INF/mods.toml")) {
         let t = String::from_utf8_lossy(&t);
         let grab = |key: &str| {
@@ -219,7 +219,7 @@ pub async fn worlds(paths: &LauncherPaths, instance: &str) -> Result<Vec<World>>
                 World { folder: e.file_name().to_string_lossy().to_string(), modified, size_mb: dir_size(&p) as f64 / 1_048_576.0, icon }
             })
             .collect();
-        out.sort_by(|a, b| b.modified.cmp(&a.modified));
+        out.sort_by_key(|w| std::cmp::Reverse(w.modified));
         out
     })
     .await
@@ -247,7 +247,7 @@ pub async fn screenshots(paths: &LauncherPaths, instance: &str) -> Result<Vec<Sc
         let modified = e.metadata().await.map(|m| mtime(&m)).unwrap_or(0);
         out.push(Screenshot { file_name: e.file_name().to_string_lossy().to_string(), path: p.display().to_string(), modified });
     }
-    out.sort_by(|a, b| b.modified.cmp(&a.modified));
+    out.sort_by_key(|w| std::cmp::Reverse(w.modified));
     Ok(out)
 }
 

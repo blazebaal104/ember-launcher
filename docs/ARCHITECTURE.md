@@ -248,11 +248,23 @@ fallback file in the profile folder when the keychain rejects it (Windows' ~2.5 
 
 | Area | Status |
 |---|---|
-| Version list, instances, installs, Fabric, Java, launch, MS auth | Implemented. Core is unit-tested; the full shell compiles. |
+| Version list, instances, installs, Fabric/Quilt/NeoForge, Java, launch, MS auth | Implemented. NeoForge runs its official installer headlessly. |
 | Performance injection | Implemented (hook + lockfile). |
-| Transfer engine | Implemented and tested end-to-end against a mocked Modrinth. |
-| Discover (6 categories, Modrinth + CurseForge) | Implemented. |
-| NeoForge instances | Install step not wired yet: needs the NeoForge installer processors. Content and transfer already support NeoForge. |
-| Modpack install (.mrpack → new instance) | Planned. The inspector already parses `.mrpack`. |
-| Overlay | Written against 1.21.11 names. **Not compiled in CI yet.** First job: run `gradle build` and fix any mapping drift in `Compat.java` and the mixins. |
+| Game settings profiles (options.txt) | Implemented: keybinds, FOV, video, sound, raw options; applied on first or every launch. |
+| Modrinth modpacks (.mrpack → instance) | Implemented with path and host safety checks. |
+| Dedicated servers (Vanilla, Fabric, Paper) | Implemented: EULA consent, console with commands, properties editor, plugins. |
+| World sharing | One-click e4mc install per instance (Open to LAN → public address). |
+| Transfer engine | Implemented and tested against a mocked Modrinth. |
+| Discover (6 categories) + favorites + explanation drawer | Implemented, cached and prefetched. |
+| In-game overlay (Minecraft 26.3) | Built and **self-tested in a real headless game on CI** (`EMBER_SELFTEST_OK features=56 working=51`). Bundled into the installer. |
+| CurseForge modpacks | Planned (needs a CurseForge API key). |
+| Overlay for other versions (1.21.x, 26.1–26.2) | Planned: one build per version via the same `Compat.java` + CI matrix. |
 | Overlay terrain minimap, world map | Planned. A radar ships now. |
+
+## 9. CI
+
+`.github/workflows/build-windows.yml` builds the overlay on Linux, boots Minecraft headlessly with
+`-Pselftest` (mixin `countInjections` on), then builds the Windows installer with the overlay
+bundled. Logs are pushed to `ci-logs/<job>-<run>` branches. A commit containing `[release]`
+publishes a GitHub release. `.github/workflows/introspect.yml` dumps `javap` signatures of
+Minecraft classes (push a branch `introspect/<name>`), which is how the 26.3 port was verified.

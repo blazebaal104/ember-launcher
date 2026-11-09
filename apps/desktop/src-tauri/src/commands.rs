@@ -10,7 +10,7 @@ use launcher_core::versions::{fetch_manifest, supported_versions, GameVersion};
 use launcher_core::{install, java, Error, Result};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
@@ -264,8 +264,12 @@ struct GameLog {
 
 #[tauri::command]
 pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: String, server: Option<String>) -> Result<()> {
+    if state.running_games.lock().await.contains_key(&id) {
+        return Err(Error::Other("this instance is already running".into()));
+    }
     let mut inst = state.instances.load(&id).await?;
     let account = ensure_account(&state).await?;
+    let settings = state.settings.lock().await.clone();
 
     let emit = |stage: &'static str| {
         let app = app.clone();
@@ -279,9 +283,31 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
     let component = prepared.json.java_version.as_ref().map(|j| j.component.clone()).unwrap_or_else(|| "java-runtime-delta".into());
     let java = java::ensure_runtime(&state.client, &state.paths, &component, Some(emit("java"))).await?;
 
+    // Game settings profile → options.txt (once, or every launch if the user asked).
+    if let Some(pid) = inst.game_profile.clone() {
+        if !inst.profile_applied || inst.profile_every_launch {
+            let profile = state.profiles.lock().await.get(&pid).cloned();
+            if let Some(profile) = profile {
+                let jar = state.paths.version_jar(&prepared.vanilla_id);
+                match launcher_core::profiles::apply_to_instance(&state.paths.instance(&inst.id), &profile, &jar).await {
+                    Ok(true) => inst.profile_applied = true,
+                    Ok(false) => {}
+                    Err(e) => tracing::warn!(error = %e, "could not apply game profile"),
+                }
+            }
+        }
+    }
+
+    let mut run_inst = inst.clone();
+    if let Some(extra) = settings.default_jvm_args.clone() {
+        run_inst.jvm_args.splice(0..0, extra);
+    }
     let who = LaunchIdentity { username: account.username.clone(), uuid: account.uuid.clone(), access_token: account.mc_access_token.clone(), xuid: account.xuid.clone() };
-    let cmd = launch::build(&state.paths, &inst, &prepared, java, &who, &LaunchOptions { quick_play_server: server, ..Default::default() });
+    let cmd = launch::build(&state.paths, &run_inst, &prepared, java, &who, &LaunchOptions { quick_play_server: server, ..Default::default() });
     let mut child = launch::spawn(&cmd)?;
+    if let Some(pid) = child.id() {
+        state.running_games.lock().await.insert(id.clone(), pid);
+    }
 
     // Stream logs (the access token is never logged: it only exists in argv).
     for (stream, is_err) in [(child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Send + Unpin>), false), (child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Send + Unpin>), true)] {
@@ -296,16 +322,68 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
             }
         });
     }
+
+    let started = std::time::Instant::now();
+    let launched_at = std::time::SystemTime::now();
     let exit_app = app.clone();
     let exit_id = id.clone();
+    let instance_dir = state.paths.instance(&inst.id);
     tokio::spawn(async move {
         let code = child.wait().await.ok().and_then(|s| s.code());
-        let _ = exit_app.emit("game-exit", serde_json::json!({ "instanceId": exit_id, "code": code }));
+        let minutes = started.elapsed().as_secs() / 60;
+        // Look for a crash report written during this session.
+        let crash = newest_crash_report(&instance_dir, launched_at).await;
+        if let Some(state) = exit_app.try_state::<AppState>() {
+            state.running_games.lock().await.remove(&exit_id);
+            if let Ok(mut cfg) = state.instances.load(&exit_id).await {
+                cfg.play_minutes += minutes;
+                let _ = state.instances.save(&cfg).await;
+            }
+        }
+        if let Some(w) = exit_app.get_webview_window("main") {
+            let _ = w.unminimize();
+        }
+        let _ = exit_app.emit("game-exit", serde_json::json!({ "instanceId": exit_id, "code": code, "minutes": minutes, "crashReport": crash }));
     });
 
     inst.last_played = Some(launcher_core::chrono::Utc::now());
     state.instances.save(&inst).await?;
     let _ = app.emit("launch-progress", LaunchProgress { instance_id: id, stage: "running", done: 1, total: 1 });
+
+    match settings.on_launch.as_deref() {
+        Some("minimize") => {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.minimize();
+            }
+        }
+        Some("close") => app.exit(0),
+        _ => {}
+    }
+    Ok(())
+}
+
+async fn newest_crash_report(instance_dir: &std::path::Path, since: std::time::SystemTime) -> Option<String> {
+    let mut rd = tokio::fs::read_dir(instance_dir.join("crash-reports")).await.ok()?;
+    let mut best: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+    while let Ok(Some(e)) = rd.next_entry().await {
+        let Ok(m) = e.metadata().await else { continue };
+        let Ok(t) = m.modified() else { continue };
+        if t >= since && best.as_ref().map(|(bt, _)| t > *bt).unwrap_or(true) {
+            best = Some((t, e.path()));
+        }
+    }
+    best.map(|(_, p)| p.display().to_string())
+}
+
+/// Force-stop a running game (like closing its window).
+#[tauri::command]
+pub async fn stop_instance(state: State<'_, AppState>, id: String) -> Result<()> {
+    let pid = state.running_games.lock().await.get(&id).copied().ok_or_else(|| Error::Other("not running".into()))?;
+    let mut sys = sysinfo::System::new();
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo::Pid::from_u32(pid)]), true);
+    if let Some(p) = sys.process(sysinfo::Pid::from_u32(pid)) {
+        p.kill();
+    }
     Ok(())
 }
 
@@ -341,11 +419,20 @@ pub async fn install_files(app: AppHandle, state: State<'_, AppState>, instance_
         if url.scheme() != "https" || !DOWNLOAD_HOSTS.contains(&url.host_str().unwrap_or("")) {
             return Err(Error::Other(format!("refusing download from {}", url.host_str().unwrap_or("?"))));
         }
-        if !CONTENT_DIRS.contains(&f.dir.as_str()) {
+        // "world:<folder>" puts data packs straight into that world's datapacks folder.
+        let target = if let Some(world) = f.dir.strip_prefix("world:") {
+            launcher_core::content::check_file_name(world)?;
+            if tokio::fs::metadata(base.join("saves").join(world).join("level.dat")).await.is_err() {
+                return Err(Error::Other(format!("world {world} not found")));
+            }
+            base.join("saves").join(world).join("datapacks")
+        } else if CONTENT_DIRS.contains(&f.dir.as_str()) {
+            base.join(&f.dir)
+        } else {
             return Err(Error::Other(format!("invalid target folder {}", f.dir)));
-        }
+        };
         let name = sanitize_file_name(&f.file_name).ok_or_else(|| Error::Other(format!("invalid file name {}", f.file_name)))?;
-        jobs.push(DownloadJob { url: f.url, dest: base.join(&f.dir).join(name), sha1: f.sha1, size: f.size });
+        jobs.push(DownloadJob { url: f.url, dest: target.join(name), sha1: f.sha1, size: f.size });
     }
     let n = jobs.len();
     let id = instance_id.clone();

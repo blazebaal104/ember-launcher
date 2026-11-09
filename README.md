@@ -11,7 +11,12 @@ snapshots, pre-releases and release candidates), built with Tauri 2, React and R
 * **Mod-Version Transfer.** Drop an old mods folder, zip or modpack. Ember finds each mod's build
   for the new version and suggests successors or forks when one doesn't exist.
 * **In-game menu (Right Shift).** 50+ HUD, visual and quality-of-life tweaks in one lightweight
-  Fabric mod.
+  Fabric mod, verified in a real Minecraft 26.3 game on CI.
+* **Game profiles.** Keybinds, FOV, video and sound set once and applied to every instance.
+* **Play with friends.** One-click world sharing (e4mc) or dedicated Paper/Fabric/Vanilla servers
+  with a console and plugin installs.
+* **Modpacks.** Install any Modrinth modpack as a ready-to-play instance.
+* **Fully customisable.** Themes, accent colour, liquid glass, animations, layout, sounds.
 
 ```bash
 npm install && npm test && cargo test -p launcher-core

@@ -13,7 +13,7 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 launcher-core = { path = "../../../crates/launcher-core" }
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["protocol-asset"] }
 tauri-plugin-http = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
@@ -25,4 +25,5 @@ tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 url = "2"
+sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 

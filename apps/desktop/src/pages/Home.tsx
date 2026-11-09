@@ -1,144 +1,200 @@
-import { useEffect, useState } from "react";
-import { FolderOpen, Gauge, Layers, Play, Plus } from "lucide-react";
-import { api, errorCode, onEvent, type Instance } from "../lib/ipc";
+import { motion } from "motion/react";
+import { useNavigate } from "react-router-dom";
+import { ArrowRightLeft, Clock, Compass, Gauge, Globe2, Play, Plus, Square, Star } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useApp, type LaunchState } from "../state";
+import { api, type Instance } from "../lib/ipc";
 import { ago, loaderName } from "../lib/format";
-import { useApp } from "../state";
+import { prefetchProject, useDiscover } from "../lib/queries";
+import { Badge, Button, Empty, Skeleton } from "../components/ui";
 
-interface LaunchState {
-  stage: string;
-  done: number;
-  total: number;
+/** Deterministic colour pair per instance so each card has its own identity. */
+export function instanceGradient(name: string) {
+  let h = 0;
+  for (const c of name) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `linear-gradient(135deg, hsl(${h} 45% 28%), hsl(${(h + 50) % 360} 55% 16%))`;
+}
+
+export const playTime = (m = 0) => (m < 60 ? `${m} min` : `${Math.floor(m / 60)} h ${m % 60} min`);
+
+function stageLabel(s?: LaunchState) {
+  if (!s) return "Play";
+  if (s.stage === "running") return "Running";
+  if (s.stage === "java") return "Getting Java";
+  if (s.stage === "files") return `Downloading ${Math.round((s.done / Math.max(1, s.total)) * 100)}%`;
+  return "Preparing";
+}
+
+export function PlayButton({ instance, big }: { instance: Instance; big?: boolean }) {
+  const { launching, play, toast } = useApp();
+  const s = launching[instance.id];
+  const running = s?.stage === "running";
+  const pct = s && s.stage === "files" ? s.done / Math.max(1, s.total) : s ? 0.15 : 0;
+  return (
+    <motion.button
+      type="button"
+      whileHover={{ scale: running ? 1 : 1.04 }}
+      whileTap={{ scale: 0.96 }}
+      onClick={() => (running ? api.stop(instance.id).catch((e) => toast({ title: "Couldn't stop", body: String(e), tone: "error" })) : !s && play(instance))}
+      disabled={!!s && !running}
+      className={`press press-accent relative flex items-center gap-2 overflow-hidden rounded-card font-bold ${running ? "bg-slate-raised text-text" : "bg-copper text-on-accent"} ${big ? "px-8 py-3.5 text-[17px]" : "px-4 py-2 text-[14px]"}`}
+    >
+      {s && !running && <motion.span className="absolute inset-y-0 left-0 bg-white/20" animate={{ width: `${pct * 100}%` }} />}
+      {running ? <Square className={big ? "size-5" : "size-4"} fill="currentColor" /> : <Play className={big ? "size-5" : "size-4"} fill="currentColor" />}
+      <span className="relative">{running ? (big ? "Running · Stop" : "Stop") : stageLabel(s)}</span>
+    </motion.button>
+  );
+}
+
+export function InstanceCard({ instance, index = 0 }: { instance: Instance; index?: number }) {
+  const navigate = useNavigate();
+  const { launching } = useApp();
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: 14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: Math.min(index, 10) * 0.035, type: "spring", stiffness: 300, damping: 28 }}
+      className="glass lift group flex cursor-pointer flex-col overflow-hidden rounded-panel"
+      onClick={() => navigate(`/instance/${instance.id}`)}
+    >
+      <div className="relative h-24 overflow-hidden" style={{ background: instanceGradient(instance.name) }}>
+        {instance.icon && <img src={instance.icon} alt="" className="absolute inset-0 size-full object-cover opacity-70 transition-transform duration-500 group-hover:scale-110" />}
+        <div className="block-grid absolute inset-0 opacity-40" />
+        <div className="absolute left-3 top-3 flex gap-1.5">
+          {instance.favorite && <Badge tone="gold"><Star className="size-3" fill="currentColor" /></Badge>}
+          {launching[instance.id]?.stage === "running" && <Badge tone="accent">Running</Badge>}
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className="truncate text-[16px] font-bold">{instance.name}</h3>
+        <p className="mt-0.5 text-[13px] text-muted">{instance.gameVersion} · {loaderName[instance.loader]}</p>
+        <p className="text-[12px] text-muted">{ago(instance.lastPlayed)}{instance.playMinutes ? ` · ${playTime(instance.playMinutes)}` : ""}</p>
+        <div className="mt-4 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+          <PlayButton instance={instance} />
+          {instance.performanceBundle && <Gauge className="ml-auto size-4 text-copper" aria-label="Performance stack" />}
+        </div>
+      </div>
+    </motion.li>
+  );
 }
 
 export function Home() {
-  const { instances, setNewInstanceOpen } = useApp();
-  const [launching, setLaunching] = useState<Record<string, LaunchState>>({});
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const un = onEvent<LaunchState & { instanceId: string }>("launch-progress", (p) => setLaunching((s) => ({ ...s, [p.instanceId]: p })));
-    const unExit = onEvent<{ instanceId: string }>("game-exit", (p) =>
-      setLaunching((s) => {
-        const { [p.instanceId]: _gone, ...rest } = s;
-        return rest;
-      }),
-    );
-    return () => {
-      un.then((f) => f());
-      unExit.then((f) => f());
-    };
-  }, []);
-
-  const play = async (i: Instance) => {
-    setError(null);
-    setLaunching((s) => ({ ...s, [i.id]: { stage: "preparing", done: 0, total: 1 } }));
-    try {
-      await api.launch(i.id);
-    } catch (e) {
-      const c = errorCode(e);
-      setError(
-        c === "not_signed_in" || c === "no_client_id"
-          ? "Sign in with your Microsoft account first (bottom left) so Minecraft knows it's you."
-          : c === "app_not_approved"
-            ? "Your Azure app is still waiting for Mojang's approval. Check Settings."
-            : `${i.name} didn't start: ${e}`,
-      );
-      setLaunching(({ [i.id]: _x, ...rest }) => rest);
-    }
-  };
-
+  const { instances, setNewInstanceOpen, openProject } = useApp();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
   const [hero, ...rest] = instances;
+  const trending = useDiscover("modrinth", "mods", { sort: "follows", page: 0, gameVersion: hero?.gameVersion, loader: hero && hero.loader !== "vanilla" ? hero.loader : undefined });
+  const totalMinutes = instances.reduce((s, i) => s + (i.playMinutes ?? 0), 0);
 
   if (!hero) {
     return (
-      <div className="flex h-full flex-col items-start justify-center gap-4 px-12">
-        <h1 className="font-pixel text-5xl text-text">Make your first instance</h1>
-        <p className="max-w-[56ch] text-muted">
-          Pick a Minecraft version. Ember sets up Fabric and a tuned performance stack for that exact version, in its own folder.
-        </p>
-        <button type="button" onClick={() => setNewInstanceOpen(true)} className="flex items-center gap-2 rounded-card bg-copper px-5 py-3 font-medium text-ink-950">
-          <Plus className="size-4" aria-hidden /> New instance
-        </button>
+      <div className="mx-auto flex h-full max-w-3xl flex-col justify-center gap-6 px-10">
+        <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="font-pixel text-[56px] leading-none">Let's build your first world</motion.h1>
+        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }} className="max-w-[56ch] text-[16px] text-muted">
+          Pick a Minecraft version. Ember sets up a mod loader, a tuned performance stack and the in-game menu for that exact version, in its own folder.
+        </motion.p>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }} className="flex gap-3">
+          <Button variant="primary" size="lg" icon={Plus} onClick={() => setNewInstanceOpen(true)}>New instance</Button>
+          <Button size="lg" icon={Compass} onClick={() => navigate("/discover/modpacks")}>Browse modpacks</Button>
+        </motion.div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex max-w-6xl flex-col gap-10 px-8 py-8">
-      {/* Hero: the one bold element on the screen */}
-      <section aria-label="Continue playing" className="block-grid relative overflow-hidden rounded-panel border border-slate-line bg-slate-surface px-8 py-9">
-        <p className="text-[14px] text-muted">{hero.lastPlayed ? `Last played ${ago(hero.lastPlayed).toLowerCase()}` : "Ready for its first launch"}</p>
-        <h1 className="mt-2 max-w-[18ch] font-pixel text-[56px] leading-[1.02] text-text">{hero.name}</h1>
-        <div className="mt-5 flex flex-wrap gap-2">
-          <Chip>Minecraft {hero.gameVersion}</Chip>
-          <Chip>{loaderName[hero.loader]}</Chip>
-          {hero.performanceBundle && <Chip tone="copper">Performance stack</Chip>}
-          {hero.overlay && <Chip>In-game menu: Right Shift</Chip>}
+    <div className="mx-auto flex max-w-6xl flex-col gap-8 px-6 pb-10 pt-2">
+      {/* hero */}
+      <motion.section initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ type: "spring", stiffness: 220, damping: 26 }} className="glass relative overflow-hidden rounded-panel">
+        <div className="absolute inset-0 opacity-60" style={{ background: instanceGradient(hero.name) }} />
+        {hero.icon && <img src={hero.icon} alt="" className="absolute inset-0 size-full object-cover opacity-30 blur-[2px]" />}
+        <div className="block-grid absolute inset-0 opacity-50" />
+        <motion.div aria-hidden className="absolute -right-20 -top-20 size-80 rounded-full bg-copper/30 blur-3xl" animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.8, 0.5] }} transition={{ duration: 8, repeat: Infinity }} />
+        <div className="relative flex flex-col gap-5 p-8 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[14px] text-white/70">{hero.lastPlayed ? `Last played ${ago(hero.lastPlayed).toLowerCase()}` : "Ready for its first launch"}</p>
+            <h1 className="mt-1 max-w-[16ch] font-pixel text-[54px] leading-[1.02] text-white drop-shadow-[0_4px_18px_rgba(0,0,0,0.45)]">{hero.name}</h1>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Badge>Minecraft {hero.gameVersion}</Badge>
+              <Badge>{loaderName[hero.loader]}</Badge>
+              {hero.performanceBundle && <Badge tone="accent"><Gauge className="size-3" /> Performance stack</Badge>}
+              {hero.playMinutes ? <Badge><Clock className="size-3" /> {playTime(hero.playMinutes)}</Badge> : null}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button variant="ghost" className="bg-black/20 text-white hover:bg-black/30" onClick={() => navigate(`/instance/${hero.id}`)}>Manage</Button>
+            <PlayButton instance={hero} big />
+          </div>
         </div>
-        <div className="mt-8 flex items-center gap-3">
-          <PlayButton state={launching[hero.id]} onClick={() => play(hero)} big />
-          <button type="button" onClick={() => api.openFolder(hero.id)} className="flex items-center gap-2 rounded-card px-4 py-3 text-[14px] text-muted hover:bg-slate-raised hover:text-text">
-            <FolderOpen className="size-4" aria-hidden /> Open folder
-          </button>
-        </div>
-        {error && <p className="mt-4 text-[14px] text-redstone">{error}</p>}
+      </motion.section>
+
+      {/* quick actions */}
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        {[
+          { icon: Compass, title: "Discover", text: "Mods, shaders, packs and more, installed in one click.", to: "/discover/mods" },
+          { icon: Globe2, title: "Play with friends", text: "Host your world or a server anyone can join.", to: "/servers" },
+          { icon: ArrowRightLeft, title: "Move mods to a new version", text: "Drop an old mods folder; Ember finds the new builds.", to: "/transfer" },
+        ].map((a, i) => (
+          <motion.button key={a.title} type="button" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 + i * 0.05 }} onClick={() => navigate(a.to)} className="glass lift press group flex items-start gap-3 rounded-panel p-4 text-left">
+            <span className="grid size-10 shrink-0 place-items-center rounded-card bg-copper/15 text-copper transition-transform group-hover:scale-110 group-hover:rotate-6">
+              <a.icon className="size-5" />
+            </span>
+            <span>
+              <span className="block text-[15px] font-bold">{a.title}</span>
+              <span className="block text-[13px] text-muted">{a.text}</span>
+            </span>
+          </motion.button>
+        ))}
       </section>
 
-      <section aria-labelledby="library-h">
-        <div className="mb-4 flex items-baseline justify-between">
-          <h2 id="library-h" className="text-[20px] font-bold tracking-tight">Your instances</h2>
-          <span className="text-[13px] text-muted">Each one has its own mods, worlds and settings</span>
+      {/* instances */}
+      <section aria-labelledby="inst-h">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 id="inst-h" className="text-[20px] font-bold tracking-tight">Your instances</h2>
+          <span className="text-[13px] text-muted">{instances.length} instances · {playTime(totalMinutes)} played</span>
         </div>
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-3">
-          {rest.map((i) => (
-            <li key={i.id} className="flex flex-col rounded-card border border-slate-line bg-slate-surface p-4">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="text-[16px] font-medium leading-snug">{i.name}</h3>
-                {i.performanceBundle && <Gauge className="size-4 shrink-0 text-copper" aria-label="Performance stack installed" />}
-              </div>
-              <p className="mt-1 text-[13px] text-muted">
-                {i.gameVersion}, {loaderName[i.loader]}
-              </p>
-              <p className="text-[13px] text-muted">{ago(i.lastPlayed)}</p>
-              <div className="mt-4 flex items-center gap-2">
-                <PlayButton state={launching[i.id]} onClick={() => play(i)} />
-                <button type="button" aria-label={`Open ${i.name} folder`} onClick={() => api.openFolder(i.id)} className="rounded-chip p-2 text-muted hover:bg-slate-raised hover:text-text">
-                  <FolderOpen className="size-4" aria-hidden />
-                </button>
-                <button type="button" aria-label={`Open ${i.name} mods folder`} onClick={() => api.openFolder(i.id, "mods")} className="rounded-chip p-2 text-muted hover:bg-slate-raised hover:text-text">
-                  <Layers className="size-4" aria-hidden />
-                </button>
-              </div>
-            </li>
-          ))}
-          <li>
-            <button type="button" onClick={() => setNewInstanceOpen(true)} className="flex h-full min-h-[148px] w-full flex-col items-center justify-center gap-2 rounded-card border border-dashed border-slate-line text-muted hover:border-copper hover:text-copper">
-              <Plus className="size-5" aria-hidden /> New instance
+        <ul className="grid grid-cols-[repeat(auto-fill,minmax(230px,1fr))] gap-3">
+          {rest.map((i, idx) => <InstanceCard key={i.id} instance={i} index={idx} />)}
+          <motion.li layout>
+            <button type="button" onClick={() => setNewInstanceOpen(true)} className="press flex h-full min-h-[210px] w-full flex-col items-center justify-center gap-2 rounded-panel border-2 border-dashed border-slate-line text-muted hover:border-copper hover:text-copper">
+              <Plus className="size-6" /> New instance
             </button>
-          </li>
+          </motion.li>
         </ul>
       </section>
+
+      {/* trending */}
+      <section aria-labelledby="trend-h">
+        <div className="mb-3 flex items-baseline justify-between">
+          <h2 id="trend-h" className="text-[20px] font-bold tracking-tight">Popular for {hero.gameVersion}</h2>
+          <button type="button" onClick={() => navigate("/discover/mods")} className="text-[13px] text-copper hover:underline">See all</button>
+        </div>
+        {trending.isLoading ? (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-28" />)}</div>
+        ) : trending.data?.hits.length ? (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {trending.data.hits.slice(0, 8).map((h, i) => (
+              <motion.button
+                key={h.id}
+                type="button"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: i * 0.03 }}
+                onMouseEnter={() => prefetchProject(qc, h.id)}
+                onClick={() => openProject({ ...h, category: "mods" })}
+                className="glass lift press flex items-center gap-3 rounded-panel p-3 text-left"
+              >
+                {h.iconUrl ? <img src={h.iconUrl} alt="" className="size-11 shrink-0 rounded-card object-cover" /> : <div className="size-11 shrink-0 rounded-card bg-slate-raised" />}
+                <span className="min-w-0">
+                  <span className="block truncate text-[14px] font-medium">{h.title}</span>
+                  <span className="line-clamp-2 text-[12px] text-muted">{h.description}</span>
+                </span>
+              </motion.button>
+            ))}
+          </div>
+        ) : (
+          <Empty icon={Compass} title="Couldn't load suggestions">Check your internet connection.</Empty>
+        )}
+      </section>
     </div>
-  );
-}
-
-function Chip({ children, tone }: { children: React.ReactNode; tone?: "copper" }) {
-  return (
-    <span className={`rounded-chip px-2.5 py-1 text-[13px] ${tone === "copper" ? "bg-copper/15 text-copper" : "bg-slate-raised text-muted"}`}>{children}</span>
-  );
-}
-
-function PlayButton({ state, onClick, big }: { state?: LaunchState; onClick: () => void; big?: boolean }) {
-  const label =
-    !state ? "Play" : state.stage === "running" ? "Running" : state.stage === "java" ? "Getting Java" : state.stage === "files" ? `Downloading ${Math.round((state.done / Math.max(1, state.total)) * 100)}%` : "Preparing";
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!!state}
-      className={`flex items-center gap-2 rounded-card bg-copper font-medium text-ink-950 hover:bg-copper/90 disabled:bg-copper-deep disabled:text-text ${big ? "px-7 py-3 text-[16px]" : "px-4 py-2 text-[14px]"}`}
-    >
-      <Play className={big ? "size-5" : "size-4"} fill="currentColor" aria-hidden /> {label}
-    </button>
   );
 }

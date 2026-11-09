@@ -47,12 +47,15 @@ export function AccountButton() {
   if (account) {
     return (
       <div className="flex items-center gap-3 rounded-card px-2 py-2">
-        <img
-          src={`https://mc-heads.net/avatar/${account.uuid}/32`}
-          alt=""
-          className="size-8 rounded-chip bg-slate-raised [image-rendering:pixelated]"
-          onError={(e) => ((e.target as HTMLImageElement).style.visibility = "hidden")}
-        />
+        <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-chip bg-copper/20 text-[14px] font-bold text-copper">
+          {account.username.slice(0, 1).toUpperCase()}
+          <img
+            src={`https://mc-heads.net/avatar/${account.uuid}/32`}
+            alt=""
+            className="absolute inset-0 size-full [image-rendering:pixelated]"
+            onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+          />
+        </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-[14px] font-medium">{account.username}</div>
           <button type="button" className="text-[12px] text-muted hover:text-text" onClick={() => api.logout().then(() => setAccount(null))}>
