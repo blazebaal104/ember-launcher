@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.2
+
+- Invite friends: your server's address is always at the top with a Copy button (also when the server is off, once playit.gg is set up), every address has its own Copy, and you can customize it: change the port, or pick a nicer playit.gg address with "Customize on playit.gg".
+- playit.gg now comes online straight away when you connect it (or switch it on) while the server is already running: no restart needed. If it ever shows an error, there's a Retry button.
+- Fixed servers failing to start with "another process has locked a portion of the file": a copy of the server left running from an earlier session is now found and stopped automatically.
+- Closing Ember now stops your running servers properly (saving the world) instead of leaving them running in the background.
+
 ## 0.4.1
 
 - Fixed **Connect playit.gg** stopping with "AgentVersionTooOld": Ember now identifies itself to playit.gg the way its bundled playit program expects. If you tried before, press Disconnect (if shown) and Connect playit.gg again.

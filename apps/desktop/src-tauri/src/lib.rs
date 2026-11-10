@@ -95,6 +95,7 @@ pub fn run() {
             servers::playit_claim_poll,
             servers::playit_disconnect,
             servers::playit_tunnel,
+            servers::server_playit_start,
             servers::server_content,
             servers::server_content_enabled,
             servers::server_content_delete,
@@ -108,6 +109,22 @@ pub fn run() {
             features::server_open_folder,
             features::network_info,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Ember Launcher");
+        .build(tauri::generate_context!())
+        .expect("error while building Ember Launcher")
+        .run(|app, event| {
+            // Closing Ember stops hosted servers properly (saving the world) instead of leaving
+            // them running invisibly, where they'd lock the world for the next start.
+            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+                let state = app.state::<state::AppState>();
+                let running = state.running_servers.try_lock().map(|r| !r.is_empty()).unwrap_or(true);
+                if running && !servers::SHUTTING_DOWN.swap(true, std::sync::atomic::Ordering::SeqCst) {
+                    api.prevent_exit();
+                    let app = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        servers::stop_all(&app).await;
+                        app.exit(0);
+                    });
+                }
+            }
+        });
 }

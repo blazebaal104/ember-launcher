@@ -423,6 +423,7 @@ export const api = {
   playitClaimStart: () => call<{ code: string; url: string }>("playit_claim_start"),
   playitClaimPoll: (code: string) => call<ClaimStatus>("playit_claim_poll", { code }),
   playitDisconnect: () => call<void>("playit_disconnect"),
+  playitStart: (id: string) => call<void>("server_playit_start", { id }),
   playitTunnel: (id: string) => call<PlayitTunnel | null>("playit_tunnel", { id }),
   appVersion: () => call<{ version: string; build: number }>("app_version"),
   checkUpdate: () => call<UpdateInfo | null>("app_update_check"),
@@ -600,6 +601,7 @@ async function demo(cmd: string, args?: Record<string, unknown>): Promise<unknow
     case "server_import_world":
     case "server_open_backups":
     case "playit_disconnect":
+    case "server_playit_start":
     case "app_update_install":
       return undefined;
     case "server_update": {

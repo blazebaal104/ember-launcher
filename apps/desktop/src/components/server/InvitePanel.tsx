@@ -46,9 +46,11 @@ export function InvitePanel({ s, live, open: isOpen, onClose }: { s: ServerView;
           if (st === "approved") {
             setClaimState("approved");
             await api.updateServer(s.id, { playit: true });
+            // Bring the tunnel up right away if the server is already running.
+            if (s.running) await api.playitStart(s.id).catch(() => {});
             await qc.invalidateQueries({ queryKey: ["servers"] });
             await qc.invalidateQueries({ queryKey: ["playitStatus"] });
-            toast({ title: "playit.gg connected", body: s.running ? "Restart the server to bring the tunnel online." : "It starts with the server from now on.", tone: "success" });
+            toast({ title: "playit.gg connected", body: s.running ? "Bringing your address online…" : "It starts with the server from now on.", tone: "success" });
             break;
           }
           if (st === "rejected") {
@@ -98,17 +100,20 @@ export function InvitePanel({ s, live, open: isOpen, onClose }: { s: ServerView;
                 <Button variant="primary" className="shine" icon={Copy} onClick={() => copy(shareAddr, "Address copied")}>Copy address</Button>
                 <Button icon={MessageSquare} onClick={() => copy(invite, "Invite message copied")}>Copy invite message</Button>
               </div>
-              <p className="mt-2 text-[12px] text-muted">{playitAddr ? "Through playit.gg. The address stays the same every time, so friends can save it." : "Through your router. Your public address can change if your internet provider changes it."}</p>
+              <p className="mt-2 text-[12px] text-muted">
+                {playitAddr ? "Through playit.gg. It stays the same every time, so friends can save it." : "Through your router. It can change if your internet provider changes it."}
+                {!s.running && " It works while the server is running."}
+              </p>
             </motion.div>
-          ) : !s.running && s.playit ? (
-            <motion.p key="off" className="rounded-panel bg-slate-raised/60 p-4 text-[14px] text-muted">Start the server and the address appears here.</motion.p>
-          ) : null}
+          ) : (
+            <motion.p key="off" className="rounded-panel bg-slate-raised/60 p-4 text-[14px] text-muted">{s.running ? "Getting your address…" : "Start the server, or connect playit.gg below, and your address appears here."}</motion.p>
+          )}
         </AnimatePresence>
 
         {/* 1. Same Wi-Fi */}
         <Method icon={Home} title="Friends at your place (same Wi-Fi)" state="ok">
           {n?.lanIp ? (
-            <button type="button" onClick={() => copy(`${n.lanIp}${port}`)} className="press mt-2 flex w-full items-center justify-between rounded-card bg-slate-raised px-3 py-2 font-[ui-monospace,monospace] text-[14px]">{n.lanIp}{port}<Copy className="size-4 text-muted" /></button>
+            <CopyRow value={`${n.lanIp}${port}`} onCopy={copy} />
           ) : (
             <p className="mt-1 text-[13px] text-muted">Start the server to see the address. You join it yourself with <b>localhost</b>.</p>
           )}
@@ -116,6 +121,7 @@ export function InvitePanel({ s, live, open: isOpen, onClose }: { s: ServerView;
 
         {/* 2. Router */}
         <Method icon={Router} title="Through your router (automatic)" state={!s.running ? "idle" : n?.checking ? "busy" : routerAddr ? "ok" : "bad"}>
+          {routerAddr && <CopyRow value={routerAddr} onCopy={copy} />}
           <p className="mt-1 text-[13px] text-muted">
             {!s.running
               ? "When the server starts, Ember asks your router to let friends in."
@@ -162,21 +168,31 @@ export function InvitePanel({ s, live, open: isOpen, onClose }: { s: ServerView;
             </div>
           ) : (
             <div className="mt-2 flex flex-col gap-2">
-              <Toggle checked={!!s.playit} onChange={async (v) => { await api.updateServer(s.id, { playit: v }); qc.invalidateQueries({ queryKey: ["servers"] }); if (s.running) toast({ title: "Restart the server to apply", tone: "info" }); }} label="Use playit.gg for this server" detail="Starts and stops together with the server." />
+              <Toggle checked={!!s.playit} onChange={async (v) => { await api.updateServer(s.id, { playit: v }); if (s.running) await api.playitStart(s.id).catch(() => {}); qc.invalidateQueries({ queryKey: ["servers"] }); }} label="Use playit.gg for this server" detail="Starts and stops together with the server." />
+              {s.playit && playitAddr && <CopyRow value={playitAddr} onCopy={copy} />}
               {s.playit && (
                 <p className="text-[13px] text-muted">
                   {playitAddr ? <>Online at <b className="text-text">{playitAddr}</b>.</>
-                    : live?.playit.state === "error" ? <span className="text-gold">{live.playit.error}</span>
+                    : live?.playit.state === "error" ? <span className="text-gold">{live.playit.error} <button type="button" className="ml-1 text-copper underline-offset-2 hover:underline" onClick={() => api.playitStart(s.id)}>Retry</button></span>
                     : s.running ? (live?.playit.error ? `Connecting… (${live.playit.error})` : "Connecting…")
                     : tunnel.isFetching ? "Preparing your address…"
                     : tunnel.error ? <span className="text-gold">{String(tunnel.error)}</span>
                     : "Ready. The tunnel comes online when the server starts."}
                 </p>
               )}
+              {s.playit && (
+                <div className="rounded-card bg-slate-raised/50 p-3 text-[13px]">
+                  <p className="font-medium">Want a nicer address?</p>
+                  <p className="mt-0.5 text-muted">On playit.gg you can rename the tunnel or pick a custom address (some options need playit Premium). Ember picks up the new address by itself.</p>
+                  <Button size="sm" className="mt-2" icon={ExternalLink} onClick={() => open(tunnel.data?.id ? `https://playit.gg/account/tunnels/${tunnel.data.id}` : "https://playit.gg/account/tunnels")}>Customize on playit.gg</Button>
+                </div>
+              )}
               <button type="button" className="self-start text-[12px] text-muted underline-offset-2 hover:text-text hover:underline" onClick={async () => { await api.playitDisconnect(); qc.invalidateQueries({ queryKey: ["playitStatus"] }); }}>Disconnect playit.gg from Ember</button>
             </div>
           )}
         </Method>
+
+        <PortEditor s={s} />
 
         <div className="rounded-panel bg-slate-raised/40 p-4 text-[13px]">
           <p className="mb-1 font-medium">How friends join</p>
@@ -188,6 +204,47 @@ export function InvitePanel({ s, live, open: isOpen, onClose }: { s: ServerView;
         </div>
       </div>
     </Modal>
+  );
+}
+
+function CopyRow({ value, onCopy }: { value: string; onCopy: (v: string) => void }) {
+  return (
+    <button type="button" onClick={() => onCopy(value)} className="press mt-2 flex w-full items-center justify-between gap-2 rounded-card bg-slate-raised px-3 py-2 text-left font-[ui-monospace,monospace] text-[14px]" title="Copy">
+      <span className="truncate" data-selectable>{value}</span>
+      <span className="flex shrink-0 items-center gap-1 font-sans text-[12px] text-muted"><Copy className="size-4" /> Copy</span>
+    </button>
+  );
+}
+
+/** Change the port the server listens on (playit's tunnel follows automatically). */
+function PortEditor({ s }: { s: ServerView }) {
+  const { toast } = useApp();
+  const qc = useQueryClient();
+  const [port, setPort] = useState(String(s.port));
+  useEffect(() => setPort(String(s.port)), [s.port]);
+  const n = Number(port);
+  const valid = Number.isInteger(n) && n >= 1024 && n <= 65535;
+  const save = async () => {
+    try {
+      await api.setServerProperties(s.id, { "server-port": String(n) });
+      await qc.invalidateQueries({ queryKey: ["servers"] });
+      await qc.invalidateQueries({ queryKey: ["playitTunnel", s.id] });
+      toast({ title: `Port set to ${n}`, body: s.playit ? "Your playit.gg tunnel is updated on the next start." : undefined, tone: "success" });
+    } catch (e) {
+      toast({ title: "Couldn't change the port", body: String(e), tone: "error" });
+    }
+  };
+  return (
+    <details className="rounded-panel border border-slate-line/60 p-4 text-[13px]">
+      <summary className="cursor-pointer select-none font-medium">Advanced: port <span className="font-normal text-muted">({s.port})</span></summary>
+      <p className="mt-2 text-muted">The default 25565 means friends don't need to type a port. Change it only if another server already uses it.</p>
+      <div className="mt-2 flex items-center gap-2">
+        <input value={port} onChange={(e) => setPort(e.target.value.replace(/\D/g, "").slice(0, 5))} disabled={s.running} className="w-28 rounded-card border border-slate-line bg-slate-raised px-3 py-1.5 font-mono" />
+        <Button size="sm" disabled={s.running || !valid || n === s.port} onClick={save}>Save</Button>
+        {s.running && <span className="text-muted">Stop the server to change it.</span>}
+        {!valid && <span className="text-gold">Use a number from 1024 to 65535.</span>}
+      </div>
+    </details>
   );
 }
 

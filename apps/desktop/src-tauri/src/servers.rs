@@ -34,6 +34,45 @@ fn say(app: &AppHandle, id: &str, line: impl Into<String>) {
     let _ = app.emit("server-log", ServerLog { server_id: id.to_string(), line });
 }
 
+/// Set once Ember is closing, so servers aren't restarted and exit isn't intercepted twice.
+pub static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Stop every running server (used when Ember closes).
+pub async fn stop_all(app: &AppHandle) {
+    let ids: Vec<String> = app.state::<AppState>().running_servers.lock().await.keys().cloned().collect();
+    let mut tasks = Vec::new();
+    for id in ids {
+        let app = app.clone();
+        tasks.push(tokio::spawn(async move { stop_and_wait(&app, &id).await }));
+    }
+    for t in tasks {
+        let _ = t.await;
+    }
+}
+
+/// A server left running by an earlier Ember session (e.g. Ember crashed or was killed)
+/// keeps the world locked, and a new start fails with "another process has locked a portion
+/// of the file". Find Java processes running in this server's folder and stop them.
+async fn stop_orphans(dir: &std::path::Path) -> usize {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+    let want = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_cwd(UpdateKind::Always).with_cmd(UpdateKind::Always));
+    let mut killed = 0;
+    for p in sys.processes().values() {
+        let is_java = p.name().to_string_lossy().to_ascii_lowercase().contains("java");
+        let here = p.cwd().map(|c| std::fs::canonicalize(c).unwrap_or_else(|_| c.to_path_buf()) == want).unwrap_or(false);
+        let server_jar = p.cmd().iter().any(|a| a.to_string_lossy().ends_with("server.jar"));
+        if is_java && here && server_jar && p.kill() {
+            killed += 1;
+        }
+    }
+    if killed > 0 {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    killed
+}
+
 /// Recent crash restarts per server, so a server that crashes on boot isn't restarted forever.
 static CRASHES: StdMutex<Option<HashMap<String, Vec<Instant>>>> = StdMutex::new(None);
 
@@ -88,6 +127,11 @@ pub async fn start_server(app: AppHandle, id: String) -> Result<()> {
             Ok(Err(e)) => say(&app, &id, format!("[Ember] Backup failed: {e}")),
             Err(e) => say(&app, &id, format!("[Ember] Backup failed: {e}")),
         }
+    }
+
+    let orphans = stop_orphans(&dir).await;
+    if orphans > 0 {
+        say(&app, &id, "[Ember] A copy of this server was still running from an earlier session (it kept the world locked). Ember stopped it; starting fresh.");
     }
 
     let component = cfg.java_component.clone().unwrap_or_else(|| "java-runtime-delta".into());
@@ -146,7 +190,7 @@ pub async fn start_server(app: AppHandle, id: String) -> Result<()> {
             let _ = launcher_core::net::close_port(port).await;
         }
         let _ = exit_app.emit("server-exit", serde_json::json!({ "serverId": exit_id, "code": code }));
-        let crashed = !stopping && code != Some(0);
+        let crashed = !stopping && code != Some(0) && !SHUTTING_DOWN.load(std::sync::atomic::Ordering::SeqCst);
         if crashed {
             let cfg = state.servers.load(&exit_id).await.ok();
             if cfg.as_ref().is_some_and(|c| c.restart_on_crash) {
@@ -285,7 +329,7 @@ fn spawn_playit(app: AppHandle, id: String, live: Arc<StdMutex<ServerLive>>, por
         };
         set("starting", None, None);
         let Some(secret) = playit_secret(&state) else {
-            set("error", None, Some("playit.gg isn't connected yet. Open Invite friends to connect it.".into()));
+            set("error", None, Some("playit.gg wasn't connected when the server started. Connect it below, then press Retry.".into()));
             return;
         };
         let bin = playitd_path(&state);
@@ -735,4 +779,25 @@ pub async fn server_content_enabled(state: State<'_, AppState>, id: String, file
 pub async fn server_content_delete(state: State<'_, AppState>, id: String, file: String) -> Result<()> {
     let cfg = state.servers.load(&id).await?;
     launcher_core::content::delete_at(&state.servers.dir(&cfg.id), addon_dir(&cfg)?, &file).await
+}
+
+/// (Re)start the playit.gg tunnel for a running server, e.g. right after connecting
+/// playit.gg or turning it on, so no server restart is needed.
+#[tauri::command]
+pub async fn server_playit_start(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<()> {
+    let cfg = state.servers.load(&id).await?;
+    let live = {
+        let mut running = state.running_servers.lock().await;
+        let Some(r) = running.get_mut(&id) else { return Ok(()) };
+        if let Some(mut c) = r.playit_child.take() {
+            let _ = c.kill().await;
+        }
+        r.live.clone()
+    };
+    if cfg.playit {
+        spawn_playit(app, id, live, cfg.port);
+    } else if let Ok(mut l) = live.lock() {
+        l.playit = PlayitLive { state: "off".into(), ..Default::default() };
+    }
+    Ok(())
 }
