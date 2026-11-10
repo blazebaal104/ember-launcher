@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+- Fixed **Connect playit.gg** stopping with "AgentVersionTooOld": Ember now identifies itself to playit.gg the way its bundled playit program expects. If you tried before, press Disconnect (if shown) and Connect playit.gg again.
+
 ## 0.4.0
 
 ### Servers, redesigned

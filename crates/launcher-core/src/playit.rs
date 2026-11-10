@@ -12,6 +12,11 @@ use serde_json::{json, Value};
 
 pub const API: &str = "https://api.playit.gg";
 
+/// Version of the bundled playit agent (CI builds playitd from this release). playit.gg
+/// checks this during setup and rejects anything it doesn't recognise as AgentVersionTooOld,
+/// so it must use the agent's own "playit <version>" format.
+pub const AGENT_VERSION: &str = "2.0.2";
+
 pub fn new_claim_code() -> String {
     let mut b = [0u8; 5];
     getrandom(&mut b);
@@ -62,6 +67,7 @@ fn describe(v: Option<&Value>) -> String {
 
 fn humanize(code: &str) -> String {
     match code {
+        "AgentVersionTooOld" => "playit.gg says this version of its program is too old; update Ember".into(),
         "CodeExpired" => "the setup link expired, start again".into(),
         "UserRejected" => "the request was declined in the browser".into(),
         "RequiresVerifiedAccount" | "RequiresPlayitPremium" => "your playit.gg account needs to be verified (check your email) for this".into(),
@@ -80,7 +86,7 @@ pub enum ClaimStatus {
 }
 
 pub async fn claim_status(client: &reqwest::Client, code: &str) -> Result<ClaimStatus> {
-    let v = call(client, "/claim/setup", None, json!({ "code": code, "agent_type": "self-managed", "version": format!("Ember Launcher {}", env!("CARGO_PKG_VERSION")) })).await?;
+    let v = call(client, "/claim/setup", None, json!({ "code": code, "agent_type": "self-managed", "version": format!("playit {AGENT_VERSION}") })).await?;
     Ok(match v.as_str() {
         Some("UserAccepted") => ClaimStatus::Approved,
         Some("UserRejected") => ClaimStatus::Rejected,
