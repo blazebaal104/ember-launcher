@@ -15,5 +15,12 @@ Collected from testing v0.3.0. Tick off as they land.
 ## Instances
 - [x] Add Bobby (client chunk cache) to the default performance mods.
 
+## Accounts
+- [ ] Sign-in always asks which Microsoft account to use (Ember sign-in window with an account picker, not the browser's already-signed-in account).
+- [ ] Multiple accounts: add several and switch between them; warn clearly when an account doesn't own Minecraft.
+
+## Servers (from 0.4.0 testing)
+- [ ] When "Far view (Voxy)" is turned on, start the Voxy Server Side backfill automatically and warn when Voxy has no build for the version.
+
 ## Later
 - [ ] Automatic log upload/sharing (auto-logs).
