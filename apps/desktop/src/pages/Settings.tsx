@@ -1,7 +1,9 @@
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Check, Cpu, ExternalLink, Gamepad2, Info, Paintbrush, Rocket, Sparkles, User } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { checkForUpdates } from "../components/UpdateDialog";
+import { Check, Cpu, ExternalLink, Gamepad2, Info, Paintbrush, RefreshCw, Rocket, Sparkles, User } from "lucide-react";
 import { useApp } from "../state";
 import { ACCENTS, THEMES, transitionProps, type Backdrop } from "../lib/appearance";
 import { api } from "../lib/ipc";
@@ -182,13 +184,15 @@ function LauncherSection() {
 
 function AboutSection() {
   const { setTourOpen } = useApp();
+  const ver = useQuery({ queryKey: ["appVersion"], queryFn: api.appVersion, staleTime: Infinity });
   return (
     <Glass className="flex flex-col items-center gap-4 p-10 text-center">
       <motion.img src={logo} alt="" className="h-28 drop-shadow-[0_0_30px_var(--accent)]" animate={{ y: [0, -8, 0] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }} />
       <h2 className="font-pixel text-[40px] leading-none">Ember</h2>
-      <p className="text-muted">Version 0.2.0 · Minecraft 1.21 and newer</p>
+      <p className="text-muted">Version {ver.data ? `${ver.data.version}${ver.data.build ? ` (build ${ver.data.build})` : ""}` : "…"} · Minecraft 1.21 and newer</p>
       <div className="flex flex-wrap justify-center gap-2">
-        <Button variant="primary" icon={Sparkles} onClick={() => setTourOpen(true)}>Show the tour again</Button>
+        <Button variant="primary" icon={RefreshCw} onClick={checkForUpdates}>Check for updates</Button>
+        <Button icon={Sparkles} onClick={() => setTourOpen(true)}>Show the tour again</Button>
         <Button icon={ExternalLink} onClick={() => open("https://github.com/blazebaal104/ember-launcher")}>Source code</Button>
       </div>
       <p className="max-w-[60ch] text-[13px] text-muted">Not affiliated with Mojang or Microsoft. Content comes from Modrinth and CurseForge and belongs to its authors.</p>

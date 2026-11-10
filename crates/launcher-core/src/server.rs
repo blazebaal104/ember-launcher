@@ -48,6 +48,21 @@ pub struct ServerConfig {
     /// Forward the port on the router (UPnP) when the server starts.
     #[serde(default = "yes")]
     pub auto_network: bool,
+    /// Run the playit.gg tunnel while the server runs.
+    #[serde(default)]
+    pub playit: bool,
+    /// Daily world backup when the server starts (keeps the last few).
+    #[serde(default = "yes")]
+    pub auto_backup: bool,
+    /// Start again automatically if the server crashes.
+    #[serde(default = "yes")]
+    pub restart_on_crash: bool,
+    /// Stop the server after this many minutes with nobody online (None = never).
+    #[serde(default)]
+    pub stop_when_empty_mins: Option<u32>,
+    /// Pre-generate this radius (blocks) around spawn the next time the server is ready.
+    #[serde(default)]
+    pub pending_pregen: Option<u32>,
 }
 
 fn yes() -> bool {
@@ -57,6 +72,11 @@ fn yes() -> bool {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateServer {
+    /// Pre-generate this many blocks around spawn on first start.
+    #[serde(default)]
+    pub pregen_radius: Option<u32>,
+    #[serde(default)]
+    pub seed: Option<String>,
     pub name: String,
     pub kind: ServerKind,
     pub game_version: String,
@@ -121,6 +141,51 @@ pub async fn ensure_server_mods(client: &reqwest::Client, mods_dir: &std::path::
     Ok(added)
 }
 
+/// Optional extras that can be switched on per server.
+pub const ADDON_CHUNKY: &str = "chunky";
+pub const ADDON_C2ME: &str = "c2me-fabric";
+pub const ADDON_VOXY: &str = "voxy-server-side";
+
+fn addon_loaders(kind: &ServerKind) -> &'static [&'static str] {
+    match kind {
+        ServerKind::Paper => &["paper", "spigot", "bukkit"],
+        _ => &["fabric"],
+    }
+}
+
+/// Files in the server's mods/plugins folder that belong to `slug`.
+pub fn addon_files(dir: &std::path::Path, kind: &ServerKind, slug: &str) -> Vec<std::path::PathBuf> {
+    let Some(sub) = kind.addon_dir() else { return vec![] };
+    let Ok(rd) = std::fs::read_dir(dir.join(sub)) else { return vec![] };
+    rd.flatten()
+        .filter(|e| crate::perf_bundle::has_mod(&[e.file_name().to_string_lossy().into_owned()], slug))
+        .map(|e| e.path())
+        .collect()
+}
+
+/// Install (or remove) an optional extra. Returns Ok(false) when no build exists for this
+/// server's version/type, so the UI can explain instead of failing.
+pub async fn set_addon(client: &reqwest::Client, dir: &std::path::Path, kind: &ServerKind, game_version: &str, slug: &str, enabled: bool) -> Result<bool> {
+    let Some(sub) = kind.addon_dir() else { return Err(Error::Other("vanilla servers can't run mods or plugins; switch to Fabric or Paper".into())) };
+    if !enabled {
+        for f in addon_files(dir, kind, slug) {
+            tokio::fs::remove_file(f).await?;
+        }
+        return Ok(true);
+    }
+    if !addon_files(dir, kind, slug).is_empty() {
+        return Ok(true);
+    }
+    let gv = [game_version];
+    let list = crate::modrinth::project_versions(client, slug, addon_loaders(kind), &gv).await?;
+    let Some(v) = crate::modrinth::best(list) else { return Ok(false) };
+    let Some(f) = v.primary_file() else { return Ok(false) };
+    let dest = dir.join(sub);
+    tokio::fs::create_dir_all(&dest).await?;
+    crate::download::download_one(client, &DownloadJob { url: f.url.clone(), dest: dest.join(&f.filename), sha1: Some(f.hashes.sha1.clone()), size: Some(f.size) }).await?;
+    Ok(true)
+}
+
 pub struct ServerManager {
     paths: LauncherPaths,
     client: reqwest::Client,
@@ -166,6 +231,11 @@ impl ServerManager {
             java_component: None,
             installed: false,
             auto_network: true,
+            playit: false,
+            auto_backup: true,
+            restart_on_crash: true,
+            stop_when_empty_mins: None,
+            pending_pregen: req.pregen_radius.filter(|r| *r >= 256),
         };
         let dir = self.dir(&id);
         tokio::fs::create_dir_all(&dir).await?;
@@ -179,9 +249,13 @@ impl ServerManager {
         props.insert("gamemode".to_string(), req.gamemode.unwrap_or_else(|| "survival".into()));
         props.insert("difficulty".to_string(), req.difficulty.unwrap_or_else(|| "normal".into()));
         props.insert("online-mode".to_string(), "true".into());
+        if let Some(seed) = req.seed.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            props.insert("level-seed".to_string(), seed.replace(['\n', '\r'], ""));
+        }
         props.insert("enable-command-block".to_string(), "false".into());
         // Lighter defaults that keep the game smooth for a home-hosted server.
-        props.insert("view-distance".to_string(), "10".into());
+        // Players choose their own render distance up to this.
+        props.insert("view-distance".to_string(), "16".into());
         props.insert("simulation-distance".to_string(), "8".into());
         props.insert("sync-chunk-writes".to_string(), "false".into());
         props.insert("network-compression-threshold".to_string(), "256".into());
@@ -370,8 +444,10 @@ mod tests {
     async fn create_writes_properties_and_eula_needs_consent() {
         let tmp = tempfile::tempdir().unwrap();
         let m = ServerManager::new(LauncherPaths::new(tmp.path()), reqwest::Client::new());
-        let cfg = m.create(CreateServer { name: "Friends SMP".into(), kind: ServerKind::Paper, game_version: "26.3".into(), memory_mb: None, port: Some(25570), motd: None, max_players: Some(8), gamemode: None, difficulty: None }).await.unwrap();
+        let cfg = m.create(CreateServer { name: "Friends SMP".into(), kind: ServerKind::Paper, game_version: "26.3".into(), memory_mb: None, port: Some(25570), motd: None, max_players: Some(8), gamemode: None, difficulty: None, pregen_radius: Some(2000), seed: Some("42".into()) }).await.unwrap();
         assert!(cfg.id.starts_with("friends-smp-"));
+        assert_eq!(cfg.pending_pregen, Some(2000));
+        assert!(std::fs::read_to_string(m.dir(&cfg.id).join("server.properties")).unwrap().contains("level-seed=42"));
         assert!(!cfg.eula_accepted);
         assert!(m.dir(&cfg.id).join("plugins").is_dir());
         let props = m.properties(&cfg.id).await.unwrap();

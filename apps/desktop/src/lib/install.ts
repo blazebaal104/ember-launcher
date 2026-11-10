@@ -93,3 +93,22 @@ export function compatibleInstances(category: ContentCategory, instances: Instan
   if (category === "mods" || category === "shaders") return instances.filter((i) => i.loader !== "vanilla");
   return instances;
 }
+
+/**
+ * Install a mod (Fabric server) or plugin (Paper server) onto a hosted server, matched to
+ * its version; Fabric mods bring their required dependencies. Returns a short summary.
+ */
+export async function installToServer(server: ServerView, project: ProjectLike): Promise<string> {
+  if (server.kind === "vanilla") throw new Error("Vanilla servers can't run mods or plugins.");
+  const loaders = server.kind === "paper" ? PLUGIN_LOADERS : ["fabric"];
+  const best = pickBestVersion(await modrinth.projectVersions(project.id, loaders, [server.gameVersion]));
+  if (!best) throw new Error(`No ${server.kind === "paper" ? "Paper" : "Fabric"} build for ${server.gameVersion} yet.`);
+  const files: ResolvedFile[] = [mrToResolved(best, project.title, project.slug)];
+  if (server.kind === "fabric") {
+    const deps = await transferEngine(() => {}).resolveDependencies(files, { gameVersion: server.gameVersion, loader: "fabric" }).catch(() => []);
+    files.push(...deps);
+  }
+  await api.serverInstallFiles(server.id, files);
+  const extra = files.length > 1 ? ` (+${files.length - 1} required)` : "";
+  return `Added to ${server.name}${extra}.${server.running ? " Restart the server to load it." : ""}`;
+}

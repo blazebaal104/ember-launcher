@@ -32,9 +32,12 @@ pub mod net;
 pub mod neoforge;
 pub mod paths;
 pub mod perf_bundle;
+pub mod playit;
 pub mod profiles;
 pub mod rules;
 pub mod server;
+pub mod server_world;
+pub mod update;
 pub mod settings;
 pub mod version_json;
 pub mod versions;
@@ -48,7 +51,7 @@ pub const LAUNCHER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Modrinth and Mojang ask clients to identify themselves.
 pub fn user_agent() -> String {
-    format!("{LAUNCHER_NAME}/{LAUNCHER_VERSION} (+https://github.com/your-org/ember-launcher)")
+    format!("{LAUNCHER_NAME}/{LAUNCHER_VERSION} (+https://github.com/blazebaal104/ember-launcher)")
 }
 
 pub fn http_client() -> reqwest::Client {

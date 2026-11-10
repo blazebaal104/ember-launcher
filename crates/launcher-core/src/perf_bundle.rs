@@ -38,6 +38,8 @@ pub const BUNDLE: &[BundleMod] = &[
     BundleMod { slug: "entityculling", purpose: "Skip rendering hidden entities / block entities", loaders: &[Fabric, Quilt, NeoForge] },
     BundleMod { slug: "modernfix", purpose: "Faster launch, lower memory, bug fixes", loaders: &[Fabric, Quilt, NeoForge] },
     BundleMod { slug: "dynamic-fps", purpose: "Throttle FPS when the window is unfocused/minimised", loaders: &[Fabric, Quilt, NeoForge] },
+    // Remembers chunks you've seen so they render instantly and beyond the server's distance.
+    BundleMod { slug: "bobby", purpose: "Keeps chunks you've already seen, so they appear instantly and render further on servers", loaders: &[Fabric, Quilt] },
     BundleMod { slug: "krypton", purpose: "Networking stack optimisations", loaders: &[Fabric, Quilt] },
     // Fabric API is added separately with the other essentials (see ESSENTIALS).
 ];

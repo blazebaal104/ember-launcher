@@ -1,6 +1,8 @@
 //! Tauri shell: thin IPC layer over `launcher-core`. No game logic lives here.
 mod commands;
 mod features;
+mod servers;
+mod updater;
 mod state;
 
 use launcher_core::instance::InstanceManager;
@@ -25,6 +27,7 @@ pub fn run() {
             let settings = tauri::async_runtime::block_on(launcher_core::settings::LauncherSettings::load(&paths));
             let profiles = tauri::async_runtime::block_on(launcher_core::profiles::ProfileStore::load(&paths));
             app.manage(state::AppState::new(paths, client, instances, settings, profiles));
+            updater::cleanup(app.handle());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -69,11 +72,35 @@ pub fn run() {
             features::server_delete,
             features::server_accept_eula,
             features::server_install,
-            features::server_start,
-            features::server_stop,
-            features::server_command,
-            features::server_live,
-            features::server_log,
+            updater::app_version,
+            updater::app_update_check,
+            updater::app_update_install,
+            servers::server_start,
+            servers::server_stop,
+            servers::server_restart,
+            servers::server_update,
+            servers::server_world,
+            servers::server_backup,
+            servers::server_restore,
+            servers::server_delete_backup,
+            servers::server_reset_world,
+            servers::server_import_world,
+            servers::server_open_backups,
+            servers::server_players,
+            servers::server_pregen,
+            servers::server_addons,
+            servers::server_set_addon,
+            servers::playit_status,
+            servers::playit_claim_start,
+            servers::playit_claim_poll,
+            servers::playit_disconnect,
+            servers::playit_tunnel,
+            servers::server_content,
+            servers::server_content_enabled,
+            servers::server_content_delete,
+            servers::server_command,
+            servers::server_live,
+            servers::server_log,
             features::server_running,
             features::server_properties,
             features::server_set_properties,

@@ -20,6 +20,7 @@ import { prefetchDiscover } from "./lib/queries";
 import { startLogCapture } from "./lib/logs";
 import { motionFactor, transitionProps } from "./lib/appearance";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { UpdateDialog } from "./components/UpdateDialog";
 
 const CATS: ContentCategory[] = ["mods", "resourcepacks", "datapacks", "shaders", "modpacks", "plugins"];
 
@@ -88,6 +89,7 @@ function Shell() {
       <ErrorBoundary area="dialog"><CommandPalette /></ErrorBoundary>
       <ErrorBoundary area="panel"><ProjectDrawer /></ErrorBoundary>
       <ErrorBoundary area="tour"><Onboarding /></ErrorBoundary>
+      <ErrorBoundary area="dialog"><UpdateDialog /></ErrorBoundary>
       <Toaster />
     </MotionConfig>
   );

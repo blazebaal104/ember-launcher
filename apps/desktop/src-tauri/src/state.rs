@@ -13,6 +13,29 @@ pub struct RunningServer {
     pub started: std::time::Instant,
     /// What the dashboard shows; updated by the log reader, the sampler and the network task.
     pub live: std::sync::Arc<std::sync::Mutex<ServerLive>>,
+    pub pid: Option<u32>,
+    /// The playit.gg agent carrying this server's tunnel, if enabled.
+    pub playit_child: Option<tokio::process::Child>,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Pregen {
+    pub percent: f32,
+    pub chunks: u64,
+    pub eta: Option<String>,
+    pub rate: Option<f32>,
+    /// running | paused | done | cancelled
+    pub state: String,
+}
+
+#[derive(Debug, Clone, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayitLive {
+    /// off | starting | online | error
+    pub state: String,
+    pub address: Option<String>,
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, serde::Serialize)]
@@ -49,10 +72,39 @@ pub struct ServerLive {
     pub lag_warnings: u32,
     pub last_lag: Option<String>,
     pub network: NetworkStatus,
+    pub pregen: Option<Pregen>,
+    pub playit: PlayitLive,
+    /// The user asked it to stop (so an exit isn't treated as a crash).
+    pub stopping: bool,
     #[serde(skip)]
     pub log: std::collections::VecDeque<String>,
     #[serde(skip)]
     pub exited: bool,
+}
+
+/// Parse Chunky's progress lines, e.g.
+/// `[Chunky] Task running for world. Processed: 51384 chunks (13.15%), ETA: 0:12:34, Rate: 67.8 cps, Current: -21, 103`
+pub fn parse_chunky(msg: &str) -> Option<Pregen> {
+    let rest = msg.strip_prefix("[Chunky] ").unwrap_or(msg);
+    let state = if rest.starts_with("Task running for") {
+        "running"
+    } else if rest.starts_with("Task finished for") {
+        "done"
+    } else if rest.starts_with("Task paused for") {
+        "paused"
+    } else if rest.starts_with("Task cancelled for") || rest.starts_with("Task stopped for") {
+        "cancelled"
+    } else {
+        return None;
+    };
+    let between = |a: &str, b: &str| rest.split_once(a).and_then(|(_, r)| r.split_once(b).map(|(v, _)| v.trim().to_string()));
+    Some(Pregen {
+        state: state.into(),
+        chunks: between("Processed: ", " chunks").and_then(|v| v.parse().ok()).unwrap_or(0),
+        percent: between("(", "%)").and_then(|v| v.parse().ok()).unwrap_or(if state == "done" { 100.0 } else { 0.0 }),
+        eta: between("ETA: ", ",").filter(|e| !e.is_empty()),
+        rate: between("Rate: ", " cps").and_then(|v| v.parse().ok()),
+    })
 }
 
 impl ServerLive {
@@ -74,6 +126,8 @@ impl ServerLive {
             }
         } else if let Some(name) = msg.strip_suffix(" left the game").and_then(|s| s.split_whitespace().last()) {
             self.players.retain(|p| p != name);
+        } else if let Some(p) = parse_chunky(msg) {
+            self.pregen = Some(p);
         } else if msg.starts_with("Can't keep up!") {
             self.lag_warnings += 1;
             self.last_lag = Some(msg.to_string());
@@ -134,5 +188,26 @@ impl AppState {
 
     pub async fn auth(&self) -> MicrosoftAuth {
         MicrosoftAuth::new(self.client.clone(), self.client_id().await.unwrap_or_default().trim().to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn chunky_progress() {
+        let p = parse_chunky("[Chunky] Task running for minecraft:overworld. Processed: 51384 chunks (13.15%), ETA: 0:12:34, Rate: 67.8 cps, Current: -21, 103").unwrap();
+        assert_eq!(p.chunks, 51384);
+        assert!((p.percent - 13.15).abs() < 0.01);
+        assert_eq!(p.eta.as_deref(), Some("0:12:34"));
+        assert_eq!(p.rate, Some(67.8));
+        assert_eq!(parse_chunky("[Chunky] Task finished for world. Processed: 390625 chunks (100.00%), Total time: 1:02:03").unwrap().state, "done");
+        assert!(parse_chunky("Steve joined the game").is_none());
+        let mut l = ServerLive::default();
+        l.on_line("[12:00:00] [Server thread/INFO]: Steve joined the game");
+        l.on_line("[12:00:01] [Server thread/INFO]: [Chunky] Task paused for world. Processed: 10 chunks (1.00%), ETA: 1:00:00, Rate: 5.0 cps, Current: 0, 0");
+        assert_eq!(l.players, vec!["Steve"]);
+        assert_eq!(l.pregen.unwrap().state, "paused");
     }
 }

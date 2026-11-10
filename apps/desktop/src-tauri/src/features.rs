@@ -1,20 +1,19 @@
 //! IPC commands for instances' content, profiles, favorites, modpacks and dedicated servers.
 //! As in commands.rs, all input from the webview is validated before touching disk.
-use crate::state::{AppState, RunningServer, Sample, ServerLive};
+use crate::state::AppState;
 use launcher_core::content::{self, ContentFile, Favorite, Screenshot, World};
 use launcher_core::download::{download_all, DownloadJob, Progress};
 use launcher_core::instance::{InstanceConfig, InstancePatch};
 use launcher_core::mrpack::{self, PackRequest, PackResult};
 use launcher_core::profiles::{profile_from_options, GameProfile, ProfileStore};
 use launcher_core::server::{lan_ip, CreateServer, ServerConfig};
-use launcher_core::{java, Error, Result};
+use launcher_core::{Error, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_opener::OpenerExt;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
 // ------------------------------------------------------------------ instances
 
@@ -207,173 +206,6 @@ pub async fn server_accept_eula(state: State<'_, AppState>, id: String) -> Resul
 #[tauri::command]
 pub async fn server_install(state: State<'_, AppState>, id: String) -> Result<ServerConfig> {
     state.servers.install(&id).await
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct ServerLog {
-    server_id: String,
-    line: String,
-}
-
-#[tauri::command]
-pub async fn server_start(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<()> {
-    if state.running_servers.lock().await.contains_key(&id) {
-        return Err(Error::Other("already running".into()));
-    }
-    let mut cfg = state.servers.load(&id).await?;
-    if !cfg.eula_accepted {
-        return Err(Error::Other("accept the Minecraft EULA first".into()));
-    }
-    if !cfg.installed || tokio::fs::metadata(state.servers.dir(&id).join("server.jar")).await.is_err() {
-        let _ = app.emit("server-log", ServerLog { server_id: id.clone(), line: "[Ember] Downloading server files...".into() });
-        cfg = state.servers.install(&id).await?;
-    }
-    let component = cfg.java_component.clone().unwrap_or_else(|| "java-runtime-delta".into());
-    let java = java::ensure_runtime(&state.client, &state.paths, &component, None).await?;
-    let (java, args, cwd) = state.servers.command(&cfg, java);
-
-    let mut cmd = tokio::process::Command::new(java);
-    cmd.args(&args).current_dir(&cwd).stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped());
-    #[cfg(windows)]
-    {
-        cmd.creation_flags(0x0800_0000);
-    }
-    let mut child = cmd.spawn()?;
-    let stdin = child.stdin.take().ok_or_else(|| Error::Other("no stdin".into()))?;
-    let pid = child.id();
-    let live = Arc::new(std::sync::Mutex::new(ServerLive { port: cfg.port, ..Default::default() }));
-    state.running_servers.lock().await.insert(id.clone(), RunningServer { stdin, started: std::time::Instant::now(), live: live.clone() });
-
-    for stream in [child.stdout.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Send + Unpin>), child.stderr.take().map(|s| Box::new(s) as Box<dyn tokio::io::AsyncRead + Send + Unpin>)] {
-        let Some(stream) = stream else { continue };
-        let app = app.clone();
-        let id = id.clone();
-        let live = live.clone();
-        tokio::spawn(async move {
-            let mut lines = BufReader::new(stream).lines();
-            while let Ok(Some(line)) = lines.next_line().await {
-                if let Ok(mut l) = live.lock() {
-                    l.on_line(&line);
-                }
-                let _ = app.emit("server-log", ServerLog { server_id: id.clone(), line });
-            }
-        });
-    }
-
-    // CPU / memory / players every 2 seconds, for the dashboard charts.
-    if let Some(pid) = pid {
-        let live = live.clone();
-        tokio::spawn(async move {
-            use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate, System};
-            let pid = Pid::from_u32(pid);
-            let mut sys = System::new();
-            let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f32;
-            let start = std::time::Instant::now();
-            loop {
-                sys.refresh_processes_specifics(ProcessesToUpdate::Some(&[pid]), true, ProcessRefreshKind::nothing().with_cpu().with_memory());
-                let (cpu, mem) = sys.process(pid).map(|p| (p.cpu_usage() / cores, p.memory() / 1_048_576)).unwrap_or((0.0, 0));
-                {
-                    let Ok(mut l) = live.lock() else { break };
-                    if l.exited {
-                        break;
-                    }
-                    if l.samples.len() >= ServerLive::MAX_SAMPLES {
-                        l.samples.pop_front();
-                    }
-                    let players = l.players.len() as u32;
-                    l.samples.push_back(Sample { t: start.elapsed().as_secs(), cpu: cpu.clamp(0.0, 100.0), memory_mb: mem, players });
-                }
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-            }
-        });
-    }
-
-    // Automatic network setup: forward the port on the router (UPnP) and find the public address.
-    let auto_net = cfg.auto_network;
-    {
-        let live = live.clone();
-        let client = state.client.clone();
-        let app = app.clone();
-        let id = id.clone();
-        let port = cfg.port;
-        tokio::spawn(async move {
-            if let Ok(mut l) = live.lock() {
-                l.network = crate::state::NetworkStatus { checking: true, lan_ip: lan_ip(), ..Default::default() };
-            }
-            let (forward, public) = if auto_net {
-                tokio::join!(launcher_core::net::open_port(port), launcher_core::net::public_ip(&client))
-            } else {
-                (Err(Error::Other("automatic setup is off for this server".into())), launcher_core::net::public_ip(&client).await)
-            };
-            let public = forward.as_ref().ok().and_then(|f| f.external_ip.clone()).filter(|ip| !launcher_core::net::is_shared_address(ip)).or(public);
-            let shared = forward.as_ref().ok().and_then(|f| f.external_ip.as_deref()).map(launcher_core::net::is_shared_address).unwrap_or(false);
-            let msg = match (&forward, &public) {
-                (Ok(_), Some(ip)) if !shared => format!("[Ember] Router set up automatically. Friends can join at {ip}:{port}"),
-                (Ok(_), _) if shared => "[Ember] Your internet provider shares one public address between homes, so direct joins can't work. Use the Share tab (playit.gg) instead.".into(),
-                (Err(e), _) => format!("[Ember] Couldn't set up the router automatically ({e}). Same-network players can join; see the Share tab for others."),
-                _ => String::new(),
-            };
-            if let Ok(mut l) = live.lock() {
-                l.network.checking = false;
-                l.network.public_ip = public;
-                l.network.upnp = forward.is_ok();
-                l.network.upnp_error = forward.err().map(|e| e.to_string());
-                l.network.shared_ip = shared;
-            }
-            if !msg.is_empty() {
-                let _ = app.emit("server-log", ServerLog { server_id: id, line: msg });
-            }
-        });
-    }
-
-    let exit_app = app.clone();
-    tokio::spawn(async move {
-        let code = child.wait().await.ok().and_then(|s| s.code());
-        let mut opened = false;
-        if let Ok(mut l) = live.lock() {
-            l.exited = true;
-            opened = l.network.upnp;
-        }
-        if let Some(state) = tauri::Manager::try_state::<AppState>(&exit_app) {
-            state.running_servers.lock().await.remove(&id);
-        }
-        if opened {
-            let _ = launcher_core::net::close_port(live.lock().map(|l| l.port).unwrap_or(25565)).await;
-        }
-        let _ = exit_app.emit("server-exit", serde_json::json!({ "serverId": id, "code": code }));
-    });
-    Ok(())
-}
-
-/// Dashboard data for a running server (players, charts, network). `None` when stopped.
-#[tauri::command]
-pub async fn server_live(state: State<'_, AppState>, id: String) -> Result<Option<ServerLive>> {
-    let running = state.running_servers.lock().await;
-    Ok(running.get(&id).and_then(|r| r.live.lock().ok().map(|l| l.clone())))
-}
-
-/// The last console lines (so the console isn't empty when you come back to the page).
-#[tauri::command]
-pub async fn server_log(state: State<'_, AppState>, id: String) -> Result<Vec<String>> {
-    let running = state.running_servers.lock().await;
-    Ok(running.get(&id).and_then(|r| r.live.lock().ok().map(|l| l.log.iter().cloned().collect())).unwrap_or_default())
-}
-
-/// Send a console command (without the leading slash), e.g. "op Steve".
-#[tauri::command]
-pub async fn server_command(state: State<'_, AppState>, id: String, command: String) -> Result<()> {
-    let mut running = state.running_servers.lock().await;
-    let srv = running.get_mut(&id).ok_or_else(|| Error::Other("server isn't running".into()))?;
-    let line = command.trim().trim_start_matches('/').replace(['\n', '\r'], " ");
-    srv.stdin.write_all(format!("{line}\n").as_bytes()).await?;
-    srv.stdin.flush().await?;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn server_stop(state: State<'_, AppState>, id: String) -> Result<()> {
-    server_command(state, id, "stop".into()).await
 }
 
 #[tauri::command]

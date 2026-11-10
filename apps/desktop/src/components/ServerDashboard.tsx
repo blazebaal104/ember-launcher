@@ -1,7 +1,7 @@
 import { motion } from "motion/react";
 import { useId, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Ban, CheckCircle2, Cloud, CloudRain, Copy, Cpu, Crown, Gauge, Loader2, MemoryStick, MessageSquare, Moon, Play, RefreshCw, Save, Sun, Timer, UserMinus, Users, Wifi, XCircle } from "lucide-react";
+import { AlertTriangle, Ban, CheckCircle2, Cloud, CloudRain, Copy, Cpu, Crown, Gauge, Loader2, MemoryStick, MessageSquare, Moon, Play, RefreshCw, Save, Sun, Timer, UserMinus, UserPlus, Users, Zap } from "lucide-react";
 import { api, type ServerLive, type ServerSample, type ServerView } from "../lib/ipc";
 import { useApp } from "../state";
 import { Badge, Button, Glass, IconButton, Segmented, inputClass } from "./ui";
@@ -13,7 +13,7 @@ const fmtUptime = (s: number) => {
 };
 
 /** Live overview of a running server: health charts, who's online, quick controls, join address. */
-export function ServerDashboard({ s, onStart, starting }: { s: ServerView; onStart: () => void; starting: boolean }) {
+export function ServerDashboard({ s, onStart, starting, onInvite, onWorld }: { s: ServerView; onStart: () => void; starting: boolean; onInvite: () => void; onWorld: () => void }) {
   const live = useQuery({ queryKey: ["serverLive", s.id], queryFn: () => api.serverLive(s.id), refetchInterval: s.running ? 2000 : false, enabled: s.running });
   const { toast } = useApp();
   const run = (cmd: string, done?: string) =>
@@ -52,6 +52,21 @@ export function ServerDashboard({ s, onStart, starting }: { s: ServerView; onSta
         <ChartCard title="Memory" unit="GB" samples={l?.samples ?? []} pick={(x) => x.memoryMb / 1024} max={s.memoryMb / 1024} fmt={(v) => `${v.toFixed(2)} GB`} />
         <ChartCard title="Players online" unit="" samples={l?.samples ?? []} pick={(x) => x.players} max={Math.max(4, ...(l?.samples ?? []).map((x) => x.players + 1))} fmt={(v) => `${v.toFixed(0)}`} step />
       </div>
+      {l?.pregen && l.pregen.state !== "cancelled" && (
+        <button type="button" onClick={onWorld} className="glass flex items-center gap-4 rounded-panel p-4 text-left">
+          <Zap className="size-5 shrink-0 text-copper" />
+          <div className="min-w-0 flex-1">
+            <p className="flex justify-between text-[14px] font-medium"><span>{l.pregen.state === "done" ? "World pre-generated" : l.pregen.state === "paused" ? "Pre-generation paused" : "Pre-generating the world"}</span><span className="tabular-nums text-muted">{l.pregen.percent.toFixed(1)}%{l.pregen.eta && l.pregen.state === "running" ? ` · ${l.pregen.eta} left` : ""}</span></p>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-line"><motion.div className="h-full rounded-full bg-copper" animate={{ width: `${l.pregen.percent}%` }} /></div>
+          </div>
+        </button>
+      )}
+      {last && last.memoryMb > s.memoryMb * 0.92 && (
+        <p className="flex items-start gap-2 rounded-panel border border-gold/30 bg-gold/10 px-4 py-3 text-[13px]">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-gold" />
+          <span>Memory is nearly full ({(last.memoryMb / 1024).toFixed(1)} of {(s.memoryMb / 1024).toFixed(0)} GB). If it lags, give it more in Settings → Performance, or lower the max render distance.</span>
+        </p>
+      )}
       {!!l?.lagWarnings && (
         <p className="flex items-start gap-2 rounded-panel border border-gold/30 bg-gold/10 px-4 py-3 text-[13px]">
           <AlertTriangle className="mt-0.5 size-4 shrink-0 text-gold" />
@@ -62,7 +77,7 @@ export function ServerDashboard({ s, onStart, starting }: { s: ServerView; onSta
       <div className="grid gap-3 md:grid-cols-[1.1fr_1fr]">
         <Players s={s} live={l} run={run} />
         <div className="flex flex-col gap-3">
-          <JoinCard s={s} live={l} />
+          <JoinCard s={s} live={l} onInvite={onInvite} />
           <Controls run={run} />
         </div>
       </div>
@@ -180,37 +195,30 @@ function Players({ s, live, run }: { s: ServerView; live?: ServerLive | null; ru
   );
 }
 
-function JoinCard({ s, live }: { s: ServerView; live?: ServerLive | null }) {
+function JoinCard({ s, live, onInvite }: { s: ServerView; live?: ServerLive | null; onInvite: () => void }) {
   const { toast } = useApp();
   const n = live?.network;
   const port = s.port === 25565 ? "" : `:${s.port}`;
+  const routerAddr = n?.upnp && !n.sharedIp && n.publicIp ? `${n.publicIp}${port}` : null;
+  const addr = live?.playit.address ?? routerAddr;
   const copy = (t: string) => {
     navigator.clipboard?.writeText(t);
     toast({ title: "Copied", body: t, tone: "success" });
   };
-  const Addr = ({ label, value, icon: Icon }: { label: string; value: string; icon: typeof Wifi }) => (
-    <button type="button" onClick={() => copy(value)} className="press flex w-full items-center gap-3 rounded-card bg-slate-raised px-3 py-2.5 text-left">
-      <Icon className="size-4 shrink-0 text-copper" />
-      <span className="min-w-0 flex-1">
-        <span className="block text-[11px] text-muted">{label}</span>
-        <span className="block truncate font-[ui-monospace,monospace] text-[14px]">{value}</span>
-      </span>
-      <Copy className="size-4 text-muted" />
-    </button>
-  );
   return (
     <Glass className="p-4">
       <h3 className="mb-2 text-[15px] font-bold">How friends join</h3>
-      <div className="flex flex-col gap-2">
-        {n?.publicIp && n.upnp && !n.sharedIp && <Addr label="From anywhere (router set up automatically)" value={`${n.publicIp}${port}`} icon={Cloud} />}
-        {n?.lanIp && <Addr label="Same Wi-Fi" value={`${n.lanIp}${port}`} icon={Wifi} />}
-      </div>
-      <p className="mt-2 flex items-start gap-1.5 text-[12px] text-muted">
-        {n?.checking ? <><Loader2 className="mt-0.5 size-3.5 shrink-0 animate-spin" /> Setting up your router…</>
-          : n?.upnp && !n.sharedIp ? <><CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-copper" /> Port {s.port} is forwarded on your router while the server runs, and closed again when it stops.</>
-          : n?.sharedIp ? <><XCircle className="mt-0.5 size-3.5 shrink-0 text-gold" /> Your internet provider shares your public address, so direct joins can't work. Use playit.gg in the Invite friends tab.</>
-          : <><XCircle className="mt-0.5 size-3.5 shrink-0 text-gold" /> Your router didn't allow automatic setup{n?.upnpError ? ` (${n.upnpError})` : ""}. Friends on your Wi-Fi can join; for others, see Invite friends.</>}
-      </p>
+      {addr ? (
+        <button type="button" onClick={() => copy(addr)} className="press flex w-full items-center gap-3 rounded-card bg-slate-raised px-3 py-2.5 text-left">
+          <Cloud className="size-4 shrink-0 text-copper" />
+          <span className="min-w-0 flex-1"><span className="block text-[11px] text-muted">From anywhere{live?.playit.address ? " (playit.gg)" : " (your router)"}</span><span className="block truncate font-[ui-monospace,monospace] text-[14px]">{addr}</span></span>
+          <Copy className="size-4 text-muted" />
+        </button>
+      ) : (
+        <p className="text-[13px] text-muted">{n?.checking || live?.playit.state === "starting" ? "Getting your address…" : "Friends on your Wi-Fi can join now. For friends elsewhere, set up an address in Invite friends."}</p>
+      )}
+      {n?.lanIp && <p className="mt-2 text-[12px] text-muted">Same Wi-Fi: <button type="button" className="font-mono hover:text-text" onClick={() => copy(`${n.lanIp}${port}`)}>{n.lanIp}{port}</button></p>}
+      <Button className="mt-3 w-full" icon={UserPlus} onClick={onInvite}>Invite friends</Button>
     </Glass>
   );
 }

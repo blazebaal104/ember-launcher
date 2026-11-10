@@ -200,6 +200,81 @@ export interface ServerView {
   running: boolean;
   uptimeSecs?: number | null;
   autoNetwork?: boolean;
+  playit?: boolean;
+  autoBackup?: boolean;
+  restartOnCrash?: boolean;
+  stopWhenEmptyMins?: number | null;
+  pendingPregen?: number | null;
+}
+
+export interface ServerPatch {
+  name?: string;
+  memoryMb?: number;
+  autoNetwork?: boolean;
+  playit?: boolean;
+  autoBackup?: boolean;
+  restartOnCrash?: boolean;
+  /** 0 = never */
+  stopWhenEmptyMins?: number;
+}
+
+export interface Pregen {
+  percent: number;
+  chunks: number;
+  eta?: string | null;
+  rate?: number | null;
+  state: "running" | "paused" | "done" | "cancelled";
+}
+
+export interface Backup {
+  file: string;
+  created: number;
+  sizeMb: number;
+  reason: string;
+}
+
+export interface ServerWorld {
+  levelName: string;
+  exists: boolean;
+  sizeMb: number;
+  info: LevelInfo;
+  backups: Backup[];
+  pendingPregen?: number | null;
+}
+
+export interface PlayerLists {
+  ops: string[];
+  whitelist: string[];
+  banned: string[];
+  whitelistOn: boolean;
+}
+
+export interface Addons {
+  chunky: boolean;
+  c2me: boolean;
+  voxy: boolean;
+}
+
+export type ClaimStatus = "waitingForVisit" | "waitingForApproval" | "approved" | "rejected";
+
+export interface PlayitTunnel {
+  id: string;
+  name?: string | null;
+  localPort?: number | null;
+  address?: string | null;
+  active: boolean;
+}
+
+export interface UpdateInfo {
+  tag: string;
+  version: string;
+  build: number;
+  notes: string;
+  publishedAt: string;
+  installerUrl: string;
+  installerName: string;
+  size: number;
+  pageUrl: string;
 }
 
 export interface ServerSample {
@@ -217,6 +292,9 @@ export interface ServerLive {
   lagWarnings: number;
   lastLag?: string | null;
   network: { checking: boolean; lanIp?: string | null; publicIp?: string | null; upnp: boolean; upnpError?: string | null; sharedIp: boolean };
+  pregen?: Pregen | null;
+  playit: { state: "off" | "starting" | "online" | "error"; address?: string | null; error?: string | null };
+  stopping: boolean;
 }
 
 export interface CreateServerReq {
@@ -229,6 +307,8 @@ export interface CreateServerReq {
   maxPlayers?: number;
   gamemode?: string;
   difficulty?: string;
+  seed?: string;
+  pregenRadius?: number;
 }
 
 export interface PackRequest {
@@ -323,6 +403,30 @@ export const api = {
   startServer: (id: string) => call<void>("server_start", { id }),
   stopServer: (id: string) => call<void>("server_stop", { id }),
   serverLive: (id: string) => call<ServerLive | null>("server_live", { id }),
+  serverContent: (id: string) => call<ContentFile[]>("server_content", { id }),
+  setServerContentEnabled: (id: string, file: string, enabled: boolean) => call<string>("server_content_enabled", { id, file, enabled }),
+  deleteServerContent: (id: string, file: string) => call<void>("server_content_delete", { id, file }),
+  restartServer: (id: string) => call<void>("server_restart", { id }),
+  updateServer: (id: string, patch: ServerPatch) => call<ServerView>("server_update", { id, patch }),
+  serverWorld: (id: string) => call<ServerWorld>("server_world", { id }),
+  backupServer: (id: string) => call<Backup | null>("server_backup", { id }),
+  restoreBackup: (id: string, file: string) => call<void>("server_restore", { id, file }),
+  deleteBackup: (id: string, file: string) => call<void>("server_delete_backup", { id, file }),
+  resetWorld: (id: string) => call<void>("server_reset_world", { id }),
+  importWorld: (id: string, instanceId: string, folder: string) => call<void>("server_import_world", { id, instanceId, folder }),
+  openBackups: (id: string) => call<void>("server_open_backups", { id }),
+  serverPlayers: (id: string) => call<PlayerLists>("server_players", { id }),
+  pregen: (id: string, action: "start" | "pause" | "continue" | "cancel", radius?: number) => call<"started" | "queued" | "restart" | "ok">("server_pregen", { id, action, radius }),
+  serverAddons: (id: string) => call<Addons>("server_addons", { id }),
+  setServerAddon: (id: string, addon: keyof Addons, enabled: boolean) => call<boolean>("server_set_addon", { id, addon, enabled }),
+  playitStatus: () => call<{ connected: boolean; bundled: boolean }>("playit_status"),
+  playitClaimStart: () => call<{ code: string; url: string }>("playit_claim_start"),
+  playitClaimPoll: (code: string) => call<ClaimStatus>("playit_claim_poll", { code }),
+  playitDisconnect: () => call<void>("playit_disconnect"),
+  playitTunnel: (id: string) => call<PlayitTunnel | null>("playit_tunnel", { id }),
+  appVersion: () => call<{ version: string; build: number }>("app_version"),
+  checkUpdate: () => call<UpdateInfo | null>("app_update_check"),
+  installUpdate: (tag: string) => call<void>("app_update_install", { tag }),
   serverCommand: (id: string, command: string) => call<void>("server_command", { id, command }),
   serverProperties: (id: string) => call<Record<string, string>>("server_properties", { id }),
   setServerProperties: (id: string, changes: Record<string, string>) => call<Record<string, string>>("server_set_properties", { id, changes }),
@@ -479,10 +583,75 @@ async function demo(cmd: string, args?: Record<string, unknown>): Promise<unknow
         players: ["Alex", "Steve", "Sunny"],
         lagWarnings: 1,
         lastLag: "Can't keep up! Is the server overloaded? Running 2140ms or 42 ticks behind",
-        network: { checking: false, lanIp: "192.168.1.42", publicIp: "81.2.69.160", upnp: true, upnpError: null, sharedIp: false },
+        network: { checking: false, lanIp: "192.168.1.42", publicIp: "81.2.69.160", upnp: false, upnpError: "no UPnP router found", sharedIp: false },
+        pregen: { percent: 41.7, chunks: 162890, eta: "0:21:08", rate: 128.4, state: "running" },
+        playit: { state: "online", address: "bright-fox.joinmc.link" },
+        stopping: false,
         samples: Array.from({ length: n }, (_, i) => ({ t: i * 2, cpu: 18 + 9 * Math.sin((i + now) / 6) + (i % 7) * 1.3, memoryMb: 1900 + i * 8 + 120 * Math.sin(i / 9), players: i < 20 ? 1 : i < 55 ? 2 : 3 })),
       };
     }
+    case "server_restart":
+    case "server_command":
+    case "server_stop":
+    case "server_start":
+    case "server_delete_backup":
+    case "server_restore":
+    case "server_reset_world":
+    case "server_import_world":
+    case "server_open_backups":
+    case "playit_disconnect":
+    case "app_update_install":
+      return undefined;
+    case "server_update": {
+      const s = demoServers.find((x) => x.id === a.id)!;
+      Object.assign(s, a.patch);
+      return s;
+    }
+    case "server_world":
+      return {
+        levelName: "world",
+        exists: true,
+        sizeMb: 812.4,
+        pendingPregen: null,
+        info: { name: "world", gameMode: "survival", hardcore: false, cheats: false, difficulty: "normal", version: "26.3", seed: "8812347718", days: 112 },
+        backups: [
+          { file: "2026-11-10_09-12-03_auto.zip", created: Date.now() / 1000 - 3600 * 4, sizeMb: 402.1, reason: "auto" },
+          { file: "2026-11-09_21-40-11_manual.zip", created: Date.now() / 1000 - 3600 * 16, sizeMb: 398.7, reason: "manual" },
+          { file: "2026-11-09_13-20-55_before-c2me.zip", created: Date.now() / 1000 - 3600 * 24, sizeMb: 120.2, reason: "before-c2me" },
+        ],
+      };
+    case "server_backup":
+      return { file: "now_manual.zip", created: Date.now() / 1000, sizeMb: 410, reason: "manual" };
+    case "server_players":
+      return { ops: ["Steve"], whitelist: ["Steve", "Alex", "Sunny"], banned: [], whitelistOn: false };
+    case "server_pregen":
+      return "started";
+    case "server_content":
+      return [
+        { fileName: "lithium-fabric-0.16.0.jar", name: "Lithium", version: "0.16.0", description: "No-compromises game logic optimization.", enabled: true, fromBundle: false, sha1: "", authors: [], size: 812000, modified: 0 },
+        { fileName: "chunky-fabric-1.4.40.jar", name: "Chunky", version: "1.4.40", description: "Pre-generates chunks, quickly and efficiently.", enabled: true, fromBundle: false, sha1: "", authors: [], size: 420000, modified: 0 },
+      ];
+    case "server_content_enabled":
+    case "server_content_delete":
+      return a.file;
+    case "server_addons":
+      return { chunky: true, c2me: true, voxy: false };
+    case "server_set_addon":
+      return true;
+    case "playit_status":
+      return { connected: false, bundled: true };
+    case "playit_claim_start":
+      return { code: "a1b2c3d4e5", url: "https://playit.gg/claim/a1b2c3d4e5" };
+    case "playit_claim_poll":
+      return "approved";
+    case "playit_tunnel":
+      return { id: "t1", name: "ember-friends", localPort: 25565, address: "bright-fox.joinmc.link", active: true };
+    case "app_version":
+      return { version: "0.3.0", build: 6 };
+    case "app_update_check":
+      return new URLSearchParams(location.search).has("update")
+        ? { tag: "v0.4.0-build7", version: "0.4.0", build: 7, publishedAt: new Date().toISOString(), installerUrl: "", installerName: "Ember.Launcher_0.4.0_x64-setup.exe", size: 9.8e6, pageUrl: "https://github.com/blazebaal104/ember-launcher/releases", notes: "### Servers, redesigned\n- New **Invite friends** panel with one-click playit.gg\n- Restart button, backups, pre-generation\n\n### Updates\n- Ember now updates itself from here" }
+        : null;
     case "server_properties":
       return { motd: "Friends SMP", "max-players": "10", difficulty: "normal", gamemode: "survival", "online-mode": "true", "server-port": "25565", pvp: "true", "view-distance": "10" };
     case "network_info":

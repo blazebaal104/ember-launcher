@@ -8,7 +8,7 @@ use sha1::{Digest, Sha1};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 
-pub const CONTENT_DIRS: &[&str] = &["mods", "resourcepacks", "shaderpacks", "datapacks"];
+pub const CONTENT_DIRS: &[&str] = &["mods", "resourcepacks", "shaderpacks", "datapacks", "plugins"];
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -62,9 +62,14 @@ fn mtime(meta: &std::fs::Metadata) -> i64 {
 }
 
 pub async fn list(paths: &LauncherPaths, instance: &str, dir: &str) -> Result<Vec<ContentFile>> {
+    list_at(&paths.instance(instance), dir).await
+}
+
+/// Same as [`list`] for any game folder (e.g. a hosted server).
+pub async fn list_at(root: &std::path::Path, dir: &str) -> Result<Vec<ContentFile>> {
     check_dir(dir)?;
-    let folder = paths.instance(instance).join(dir);
-    let bundle: std::collections::HashSet<String> = tokio::fs::read(paths.instance(instance).join(".ember/bundle.lock.json"))
+    let folder = root.to_path_buf().join(dir);
+    let bundle: std::collections::HashSet<String> = tokio::fs::read(root.to_path_buf().join(".ember/bundle.lock.json"))
         .await
         .ok()
         .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
@@ -169,9 +174,13 @@ fn inspect_archive(path: &Path) -> (String, ArchiveInfo) {
 }
 
 pub async fn set_enabled(paths: &LauncherPaths, instance: &str, dir: &str, file: &str, enabled: bool) -> Result<String> {
+    set_enabled_at(&paths.instance(instance), dir, file, enabled).await
+}
+
+pub async fn set_enabled_at(root: &std::path::Path, dir: &str, file: &str, enabled: bool) -> Result<String> {
     check_dir(dir)?;
     check_file_name(file)?;
-    let folder = paths.instance(instance).join(dir);
+    let folder = root.to_path_buf().join(dir);
     let base = file.trim_end_matches(".disabled");
     let (from, to) = if enabled { (format!("{base}.disabled"), base.to_string()) } else { (base.to_string(), format!("{base}.disabled")) };
     if tokio::fs::metadata(folder.join(&from)).await.is_ok() {
@@ -181,9 +190,13 @@ pub async fn set_enabled(paths: &LauncherPaths, instance: &str, dir: &str, file:
 }
 
 pub async fn delete(paths: &LauncherPaths, instance: &str, dir: &str, file: &str) -> Result<()> {
+    delete_at(&paths.instance(instance), dir, file).await
+}
+
+pub async fn delete_at(root: &std::path::Path, dir: &str, file: &str) -> Result<()> {
     check_dir(dir)?;
     check_file_name(file)?;
-    let p = paths.instance(instance).join(dir).join(file);
+    let p = root.to_path_buf().join(dir).join(file);
     match tokio::fs::metadata(&p).await {
         Ok(m) if m.is_dir() => tokio::fs::remove_dir_all(&p).await?,
         Ok(_) => tokio::fs::remove_file(&p).await?,
