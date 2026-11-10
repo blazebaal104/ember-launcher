@@ -1,0 +1,46 @@
+[1m[92m   Compiling[0m hex v0.4.3
+[1m[92m   Compiling[0m toml_writer v1.1.1+spec-1.1.0
+[1m[92m   Compiling[0m strsim v0.11.1
+[1m[92m   Compiling[0m heck v0.5.0
+[1m[92m   Compiling[0m recvmsg v1.0.0
+[1m[92m   Compiling[0m clap_lex v1.1.0
+[1m[92m   Compiling[0m interprocess v2.4.2
+[1m[92m   Compiling[0m clap_derive v4.6.1
+[1m[92m   Compiling[0m clap_builder v4.6.0
+[1m[92m   Compiling[0m toml v0.9.12+spec-1.1.0
+[1m[92m   Compiling[0m playit-agent-proto v1.3.0 (C:\Users\runneradmin\.cargo\git\checkouts\playit-agent-c9150a4caba0ce78\89638d4\packages\agent_proto)
+[1m[92m   Compiling[0m governor v0.10.4
+[1m[92m   Compiling[0m x509-parser v0.18.1
+[1m[92m   Compiling[0m which v4.4.2
+[1m[92m   Compiling[0m tracing-subscriber v0.3.23
+[1m[92m   Compiling[0m plist v1.9.0
+[1m[92m   Compiling[0m playit-api-client v0.2.0 (C:\Users\runneradmin\.cargo\git\checkouts\playit-agent-c9150a4caba0ce78\89638d4\packages\api_client)
+[1m[92m   Compiling[0m encoding-utils v0.1.0
+[1m[92m   Compiling[0m crossbeam v0.8.4
+[1m[92m   Compiling[0m dirs v4.0.0
+[1m[92m   Compiling[0m libyml v0.0.5
+[1m[92m   Compiling[0m instant-acme v0.8.5
+[1m[92m   Compiling[0m dirs v6.0.0
+[1m[92m   Compiling[0m symlink v0.1.0
+[1m[92m   Compiling[0m xml-rs v0.8.28
+[1m[92m   Compiling[0m playit-common v2.0.2 (C:\Users\runneradmin\.cargo\git\checkouts\playit-agent-c9150a4caba0ce78\89638d4\packages\common)
+[1m[92m   Compiling[0m whoami v1.6.1
+[1m[92m   Compiling[0m service-manager v0.10.0
+[1m[92m   Compiling[0m playit-ipc v2.0.2 (C:\Users\runneradmin\.cargo\git\checkouts\playit-agent-c9150a4caba0ce78\89638d4\packages\playit-ipc)
+[1m[92m   Compiling[0m playit-agent-core v2.0.2 (C:\Users\runneradmin\.cargo\git\checkouts\playit-agent-c9150a4caba0ce78\89638d4\packages\agent_core)
+[1m[92m   Compiling[0m tracing-appender v0.2.5
+[1m[92m   Compiling[0m clap v4.6.1
+[1m[92m   Compiling[0m windows-service v0.8.1
+[1m[92m   Compiling[0m tracing-rolling-file v0.1.3
+[1m[92m   Compiling[0m dotenv v0.15.0
+[1m[92m   Compiling[0m playitd v2.0.2 (C:\Users\runneradmin\.cargo\git\checkouts\playit-agent-c9150a4caba0ce78\89638d4\packages\playitd)
+[1m[92m    Finished[0m `release` profile [optimized] target(s) in 3m 42s
+[1m[92m  Installing[0m D:\a\ember-launcher\ember-launcher\playit-build\bin\playitd.exe
+[1m[92m   Installed[0m package `playitd v2.0.2 (https://github.com/playit-cloud/playit-agent?rev=89638d480be8d26cdbbdfcb14bc80b356d4e8492#89638d48)` (executable `playitd.exe`)
+[1m[93mwarning[0m: be sure to add `D:\a\ember-launcher\ember-launcher\playit-build\bin` to your PATH to be able to run the installed binaries
+total 7173
+drwxr-xr-x 1 runneradmin 197121       0 Nov 10 12:57 .
+drwxr-xr-x 1 runneradmin 197121       0 Nov 10 12:52 ..
+-rw-r--r-- 1 runneradmin 197121    1274 Nov 10 12:57 LICENSE-playit.txt
+-rw-r--r-- 1 runneradmin 197121      79 Nov 10 12:52 README.txt
+-rwxr-xr-x 1 runneradmin 197121 7339520 Nov 10 12:57 playitd.exe
