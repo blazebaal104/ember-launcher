@@ -48,6 +48,7 @@ pub async fn stop_all(app: &AppHandle) {
     for t in tasks {
         let _ = t.await;
     }
+    crate::updater::kill_bundled_agents(app);
 }
 
 /// A server left running by an earlier Ember session (e.g. Ember crashed or was killed)

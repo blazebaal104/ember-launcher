@@ -42,6 +42,8 @@ pub async fn app_update_install(app: AppHandle, state: State<'_, AppState>, tag:
     })
     .await?;
     let _ = app.emit("update-progress", serde_json::json!({ "done": 1, "total": 1, "installing": true }));
+    // The installer can't replace files that are still running (e.g. a leftover playit agent).
+    kill_bundled_agents(&app);
     // /P = passive (progress bar only); /R = reopen Ember when done.
     std::process::Command::new(&path).args(["/P", "/R"]).spawn().map_err(|e| Error::Other(format!("couldn't start the installer: {e}")))?;
     tokio::time::sleep(std::time::Duration::from_millis(600)).await;
@@ -49,9 +51,27 @@ pub async fn app_update_install(app: AppHandle, state: State<'_, AppState>, tag:
     Ok(())
 }
 
-/// Remove old downloaded installers on startup.
+/// Remove old downloaded installers on startup, and stop playit agents left over from an
+/// earlier session (no server is running yet, so any that exist are orphans).
 pub fn cleanup(app: &AppHandle) {
     if let Some(state) = app.try_state::<AppState>() {
         let _ = std::fs::remove_dir_all(state.paths.root().join("updates"));
+    }
+    kill_bundled_agents(app);
+}
+
+/// Stop every running copy of Ember's bundled playit agent.
+pub fn kill_bundled_agents(app: &AppHandle) {
+    use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System, UpdateKind};
+    let Some(state) = app.try_state::<AppState>() else { return };
+    let dir = state.paths.bundled_resources().join("playit");
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
+    let mut sys = System::new();
+    sys.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::nothing().with_exe(UpdateKind::Always));
+    for p in sys.processes().values() {
+        let ours = p.exe().map(|e| std::fs::canonicalize(e).unwrap_or_else(|_| e.to_path_buf()).starts_with(&dir)).unwrap_or(false);
+        if ours {
+            p.kill();
+        }
     }
 }

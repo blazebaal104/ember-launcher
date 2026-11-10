@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.3
+
+- Fixed the installer stopping with "Error opening file for writing ... playitd.exe": Ember now closes its playit program before updating, when it quits, and when it starts (in case one was left running).
+
 ## 0.4.2
 
 - Invite friends: your server's address is always at the top with a Copy button (also when the server is off, once playit.gg is set up), every address has its own Copy, and you can customize it: change the port, or pick a nicer playit.gg address with "Customize on playit.gg".
