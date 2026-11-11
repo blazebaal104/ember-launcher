@@ -53,7 +53,7 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true'
         id: cfg
         run: |
-          if [ "$ERA" = "modern" ]; then echo "dir=mods/ember-overlay" >> "$GITHUB_OUTPUT"; echo "java=25" >> "$GITHUB_OUTPUT"; echo "gradle=9.8.2" >> "$GITHUB_OUTPUT";
+          if [[ "$ERA" == modern* ]]; then echo "dir=mods/ember-overlay" >> "$GITHUB_OUTPUT"; echo "java=25" >> "$GITHUB_OUTPUT"; echo "gradle=9.8.2" >> "$GITHUB_OUTPUT";
           else echo "dir=mods/ember-overlay/legacy" >> "$GITHUB_OUTPUT"; echo "java=21" >> "$GITHUB_OUTPUT"; echo "gradle=9.2.1" >> "$GITHUB_OUTPUT"; fi
           # Newest Fabric API build for this Minecraft version, from Modrinth.
           FAPI=$(curl -fsSL "https://api.modrinth.com/v2/project/fabric-api/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22${MC}%22%5D" | jq -r '[.[] | select(.version_type=="release")][0].version_number // .[0].version_number')
@@ -82,6 +82,14 @@ jobs:
           ARGS="-Pminecraft_version=$MC -Pfabric_api_version=${{ steps.cfg.outputs.fapi }} -Ploader_version=${{ steps.cfg.outputs.loader }} -Pera=$ERA"
           gradle build $ARGS "-Pmc_range=${{ steps.cfg.outputs.range }}" --stacktrace 2>&1 | tee -a "$GITHUB_WORKSPACE/overlay-$MC-build.log"; exit ${PIPESTATUS[0]}
 
+      - name: Collect jar
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p overlay-out
+          f=$(ls ${{ steps.cfg.outputs.dir }}/build/libs/ember-overlay-*.jar | grep -v sources | head -1)
+          cp "$f" "overlay-out/ember-overlay-$MC.jar"
+          ls -la overlay-out
+
       - name: Self-test in a real (headless) game
         if: steps.cache.outputs.cache-hit != 'true'
         timeout-minutes: 15
@@ -92,14 +100,6 @@ jobs:
           ARGS="-Pminecraft_version=$MC -Pfabric_api_version=${{ steps.cfg.outputs.fapi }} -Ploader_version=${{ steps.cfg.outputs.loader }} -Pera=$ERA"
           timeout 600 xvfb-run -a -s "-screen 0 1280x720x24" gradle runClient $ARGS "-Pmc_range=${{ steps.cfg.outputs.range }}" -Pselftest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/overlay-$MC-selftest.log" || true
           if grep -q "EMBER_SELFTEST_OK" "$GITHUB_WORKSPACE/overlay-$MC-selftest.log"; then echo "SELFTEST PASSED"; else echo "SELFTEST FAILED"; exit 1; fi
-
-      - name: Collect jar
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          mkdir -p overlay-out
-          f=$(ls ${{ steps.cfg.outputs.dir }}/build/libs/ember-overlay-*.jar | grep -v sources | head -1)
-          cp "$f" "overlay-out/ember-overlay-$MC.jar"
-          ls -la overlay-out
 
       - uses: actions/upload-artifact@v4
         with:

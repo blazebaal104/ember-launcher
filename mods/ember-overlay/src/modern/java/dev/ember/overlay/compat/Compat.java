@@ -56,7 +56,7 @@ public final class Compat {
     public static KeyMapping key(String name, int key) {
         if (category == null) category = KeyMapping.Category.register(id("main"));
         return KeyMappingHelper.registerKeyMapping(
-                new KeyMapping("key." + MOD_ID + "." + name, InputConstants.Type.KEYBOARD, key, category));
+                new KeyMapping("key." + MOD_ID + "." + name, Era.KEY_TYPE, key, category));
     }
 
     private static final GfxImpl HUD_GFX = new GfxImpl();
@@ -96,15 +96,15 @@ public final class Compat {
     // ---------------------------------------------------------------- screens, chat, HUD state
 
     public static Screen screen(Minecraft mc) {
-        return mc.gui.screen();
+        return Era.screen(mc);
     }
 
     public static void setScreen(Minecraft mc, Screen screen) {
-        mc.gui.setScreen(screen);
+        Era.setScreen(mc, screen);
     }
 
     public static ChatComponent chat(Minecraft mc) {
-        return mc.gui.hud.getChat();
+        return Era.chat(mc);
     }
 
     public static void say(Minecraft mc, String text) {
@@ -113,7 +113,7 @@ public final class Compat {
 
     /** F1 pressed, or the debug screen is open: don't draw over it. */
     public static boolean hudHidden(Minecraft mc) {
-        return mc.gui.hud.isHidden() || mc.getDebugOverlay().showDebugScreen();
+        return Era.hudHidden(mc) || mc.getDebugOverlay().showDebugScreen();
     }
 
     public static boolean mouseDown(Minecraft mc, boolean left) {

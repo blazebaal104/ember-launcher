@@ -9,7 +9,7 @@ base { archivesName = "ember-overlay" }
 // Shared code + the 26.x adapter. (Minecraft 1.21.x builds use legacy/build.gradle.)
 sourceSets {
     main {
-        java.srcDirs = ["src/common/java", "src/modern/java"]
+        java.srcDirs = ["src/common/java", "src/modern/java", "src/${project.findProperty('era') ?: 'modern-263'}/java"]
         resources.srcDirs = ["src/common/resources", "src/modern/resources"]
     }
 }
@@ -39,6 +39,11 @@ processResources {
     def range = project.findProperty("mc_range") ?: "~${project.minecraft_version}"
     inputs.property "version", version
     inputs.property "range", range
+    // Self-test builds require every injection to apply, so a hook that silently misses a
+    // changed Minecraft method fails CI instead of shipping a dead feature.
+    def strict = project.hasProperty("selftest")
+    inputs.property "strict", strict
+    filesMatching("ember-overlay.mixins.json") { if (strict) filter { it.replace('"defaultRequire": 0', '"defaultRequire": 1') } }
     filesMatching("fabric.mod.json") { expand "version": version, "mc_range": range, "java": "25" }
 }
 
