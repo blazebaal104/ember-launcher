@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.0
+
+### The in-game menu works on many more versions
+- The Ember in-game menu (Right Shift) now works on **Minecraft 1.21 to 1.21.11 and 26.1 to 26.3** (Fabric and Quilt), not just 26.3.
+- It's added to your **existing** instances automatically the next time you press Play, and kept up to date when Ember updates. Switching it off in the instance settings removes it.
+- On 1.21 to 1.21.5, the options that hide vanilla HUD pieces (scoreboard, boss bars, titles, effect icons, custom crosshair) show as unavailable; everything else works.
+
+### Faster updates
+- Ember builds about twice as fast, so fixes reach you sooner.
+
 ## 0.4.3
 
 - Fixed the installer stopping with "Error opening file for writing ... playitd.exe": Ember now closes its playit program before updating, when it quits, and when it starts (in case one was left running).
