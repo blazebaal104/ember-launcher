@@ -1,0 +1,21 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.ember.overlay.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "LegacyCameraMixin",
+    "LegacyGameRendererMixin",
+    "LegacyChatMixin",
+    "OptionInstanceAccessor",
+    "ParticleEngineMixin",
+    "EntityTurnMixin",
+    "AbstractContainerScreenAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}

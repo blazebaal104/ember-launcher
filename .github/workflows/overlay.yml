@@ -1,0 +1,116 @@
+name: Overlay mod
+
+# Builds the in-game menu (ember-overlay) for every Minecraft version in
+# mods/ember-overlay/versions.json, one parallel job per version, and boots each one in a real
+# headless game to check every mixin applies. Jars are cached by a hash of the mod's sources,
+# so unchanged versions finish in seconds.
+#
+# Used by build-windows.yml, and runs on its own for pushes to overlay-dev branches.
+
+on:
+  workflow_call:
+  push:
+    branches: ["overlay-dev", "overlay-dev/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: echo "matrix=$(jq -c . mods/ember-overlay/versions.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: plan
+    name: Overlay ${{ matrix.v.mc }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        v: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      MC: ${{ matrix.v.mc }}
+      ERA: ${{ matrix.v.era }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Only rebuild when the mod's sources (or this workflow) changed.
+      - name: Cached jar
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: overlay-out
+          key: overlay-${{ matrix.v.mc }}-${{ hashFiles('mods/ember-overlay/**', '.github/workflows/overlay.yml') }}
+
+      - name: Pick project and versions
+        if: steps.cache.outputs.cache-hit != 'true'
+        id: cfg
+        run: |
+          if [ "$ERA" = "modern" ]; then echo "dir=mods/ember-overlay" >> "$GITHUB_OUTPUT"; echo "java=25" >> "$GITHUB_OUTPUT"; echo "gradle=9.8.2" >> "$GITHUB_OUTPUT";
+          else echo "dir=mods/ember-overlay/legacy" >> "$GITHUB_OUTPUT"; echo "java=21" >> "$GITHUB_OUTPUT"; echo "gradle=9.2.1" >> "$GITHUB_OUTPUT"; fi
+          # Newest Fabric API build for this Minecraft version, from Modrinth.
+          FAPI=$(curl -fsSL "https://api.modrinth.com/v2/project/fabric-api/version?loaders=%5B%22fabric%22%5D&game_versions=%5B%22${MC}%22%5D" | jq -r '[.[] | select(.version_type=="release")][0].version_number // .[0].version_number')
+          LOADER=$(curl -fsSL https://meta.fabricmc.net/v2/versions/loader | jq -r '[.[] | select(.stable)][0].version')
+          COVERS=$(jq -c --arg mc "$MC" '.[] | select(.mc==$mc) | .covers' mods/ember-overlay/versions.json)
+          FIRST=$(echo "$COVERS" | jq -r '.[0]'); LAST=$(echo "$COVERS" | jq -r '.[-1]')
+          if [ "$FIRST" = "$LAST" ]; then RANGE="$FIRST"; else RANGE=">=$FIRST <=$LAST"; fi
+          echo "fapi=$FAPI" >> "$GITHUB_OUTPUT"; echo "loader=$LOADER" >> "$GITHUB_OUTPUT"; echo "range=$RANGE" >> "$GITHUB_OUTPUT"
+          echo "Minecraft $MC ($ERA): Fabric API $FAPI, loader $LOADER, range '$RANGE'" | tee overlay-$MC-build.log
+
+      - uses: actions/setup-java@v4
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          distribution: temurin
+          java-version: ${{ steps.cfg.outputs.java }}
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.cache.outputs.cache-hit != 'true'
+        with:
+          gradle-version: ${{ steps.cfg.outputs.gradle }}
+
+      - name: Build
+        if: steps.cache.outputs.cache-hit != 'true'
+        working-directory: ${{ steps.cfg.outputs.dir }}
+        run: |
+          python3 "$GITHUB_WORKSPACE/mods/ember-overlay/tools/gen_legacy_compat.py"
+          ARGS="-Pminecraft_version=$MC -Pfabric_api_version=${{ steps.cfg.outputs.fapi }} -Ploader_version=${{ steps.cfg.outputs.loader }} -Pera=$ERA"
+          gradle build $ARGS "-Pmc_range=${{ steps.cfg.outputs.range }}" --stacktrace 2>&1 | tee -a "$GITHUB_WORKSPACE/overlay-$MC-build.log"; exit ${PIPESTATUS[0]}
+
+      - name: Self-test in a real (headless) game
+        if: steps.cache.outputs.cache-hit != 'true'
+        timeout-minutes: 15
+        working-directory: ${{ steps.cfg.outputs.dir }}
+        run: |
+          sudo apt-get update -q && sudo apt-get install -yq xvfb mesa-utils libgl1-mesa-dri mesa-vulkan-drivers > /dev/null
+          export LIBGL_ALWAYS_SOFTWARE=1
+          ARGS="-Pminecraft_version=$MC -Pfabric_api_version=${{ steps.cfg.outputs.fapi }} -Ploader_version=${{ steps.cfg.outputs.loader }} -Pera=$ERA"
+          timeout 600 xvfb-run -a -s "-screen 0 1280x720x24" gradle runClient $ARGS "-Pmc_range=${{ steps.cfg.outputs.range }}" -Pselftest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/overlay-$MC-selftest.log" || true
+          if grep -q "EMBER_SELFTEST_OK" "$GITHUB_WORKSPACE/overlay-$MC-selftest.log"; then echo "SELFTEST PASSED"; else echo "SELFTEST FAILED"; exit 1; fi
+
+      - name: Collect jar
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p overlay-out
+          f=$(ls ${{ steps.cfg.outputs.dir }}/build/libs/ember-overlay-*.jar | grep -v sources | head -1)
+          cp "$f" "overlay-out/ember-overlay-$MC.jar"
+          ls -la overlay-out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: overlay-${{ matrix.v.mc }}
+          path: overlay-out/*.jar
+
+      - name: Push logs
+        if: always() && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p logs && cp overlay-*.log logs/ 2>/dev/null || true
+          echo "${{ job.status }}" > logs/STATUS
+          cd logs && git init -q && git checkout -q -b "ci-logs/overlay-${{ github.run_number }}-$MC"
+          git -c user.name=ci -c user.email=ci@localhost add -A && git -c user.name=ci -c user.email=ci@localhost commit -qm "logs" || true
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "ci-logs/overlay-${{ github.run_number }}-$MC" || true

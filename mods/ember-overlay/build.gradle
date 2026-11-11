@@ -6,6 +6,14 @@ version = "${project.mod_version}+${project.minecraft_version}"
 group = "dev.ember"
 base { archivesName = "ember-overlay" }
 
+// Shared code + the 26.x adapter. (Minecraft 1.21.x builds use legacy/build.gradle.)
+sourceSets {
+    main {
+        java.srcDirs = ["src/common/java", "src/modern/java"]
+        resources.srcDirs = ["src/common/resources", "src/modern/resources"]
+    }
+}
+
 dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     implementation "net.fabricmc:fabric-loader:${project.loader_version}"
@@ -28,9 +36,10 @@ loom {
 
 processResources {
     def version = project.version
-    def mc = project.minecraft_version
+    def range = project.findProperty("mc_range") ?: "~${project.minecraft_version}"
     inputs.property "version", version
-    filesMatching("fabric.mod.json") { expand "version": version, "mc": mc }
+    inputs.property "range", range
+    filesMatching("fabric.mod.json") { expand "version": version, "mc_range": range, "java": "25" }
 }
 
 tasks.withType(JavaCompile).configureEach { it.options.release = 25 }

@@ -1,0 +1,49 @@
+plugins {
+    id "fabric-loom" version "${loom_version}"
+}
+
+// Minecraft 1.21.x builds of the overlay: shared code + the 1.21.x adapter + one era file.
+version = "${project.mod_version}+${project.minecraft_version}"
+group = "dev.ember"
+base { archivesName = "ember-overlay" }
+
+sourceSets {
+    main {
+        java.srcDirs = ["../src/common/java", "../src/legacy/java", "../src/legacy-${project.era}/java"]
+        resources.srcDirs = ["../src/common/resources", "../src/legacy/resources"]
+    }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+loom {
+    runs {
+        client {
+            if (project.hasProperty("selftest")) {
+                property("ember.selftest", "true")
+                property("mixin.debug.countInjections", "true")
+                property("mixin.debug.verify", "true")
+            }
+        }
+    }
+}
+
+processResources {
+    def version = project.version
+    def range = project.findProperty("mc_range") ?: project.minecraft_version
+    inputs.property "version", version
+    inputs.property "range", range
+    filesMatching("fabric.mod.json") { expand "version": version, "mc_range": range, "java": "21" }
+}
+
+tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}

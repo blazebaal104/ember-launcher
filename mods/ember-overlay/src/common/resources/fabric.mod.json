@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "ember-overlay",
+  "version": "${version}",
+  "name": "Ember Overlay",
+  "description": "Lightweight in-game menu with 50+ HUD, visual and quality-of-life tweaks. Bundled by Ember Launcher.",
+  "authors": [
+    "Ember Launcher"
+  ],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": [
+      "dev.ember.overlay.EmberOverlay"
+    ]
+  },
+  "mixins": [
+    "ember-overlay.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api": "*",
+    "minecraft": "${mc_range}",
+    "java": ">=${java}"
+  },
+  "breaks": {
+    "optifabric": "*"
+  }
+}

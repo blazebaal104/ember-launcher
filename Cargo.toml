@@ -16,7 +16,8 @@ thiserror = "2"
 tracing = "0.1"
 
 [profile.release]
-lto = true
-codegen-units = 1
+# Thin LTO + parallel codegen: nearly the same speed at runtime, much faster CI builds.
+lto = "thin"
+codegen-units = 16
 strip = true
 panic = "abort"

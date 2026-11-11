@@ -8,62 +8,17 @@ on:
   push:
     branches: [main]
     tags: ["v*"]
+    # Docs-only pushes don't need a new installer.
+    paths-ignore: ["docs/**", "README.md"]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
+  # The in-game menu for every supported Minecraft version (cached per version; see overlay.yml).
   overlay:
-    name: Overlay mod (Minecraft 26.3)
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    defaults:
-      run:
-        working-directory: mods/ember-overlay
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 25
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "9.8.2"
-      - name: Build
-        run: gradle build --stacktrace 2>&1 | tee ../../overlay-build.log; exit ${PIPESTATUS[0]}
-      - name: Self-test in a real (headless) game
-        if: success()
-        timeout-minutes: 15
-        run: |
-          sudo apt-get update -q && sudo apt-get install -yq xvfb mesa-utils libgl1-mesa-dri mesa-vulkan-drivers > /dev/null
-          export LIBGL_ALWAYS_SOFTWARE=1
-          timeout 600 xvfb-run -a -s "-screen 0 1280x720x24" gradle runClient -Pselftest --stacktrace 2>&1 | tee ../../overlay-selftest.log || true
-          grep -q "EMBER_SELFTEST_OK" ../../overlay-selftest.log && echo "SELFTEST PASSED" || echo "SELFTEST DID NOT PASS"
-      - name: Copy jar
-        if: success()
-        run: |
-          mkdir -p ../../overlay-out
-          cp build/libs/ember-overlay-*.jar ../../overlay-out/ 2>/dev/null || true
-          rm -f ../../overlay-out/*-sources.jar
-          ls -la ../../overlay-out
-      - uses: actions/upload-artifact@v4
-        if: success()
-        with:
-          name: overlay-jar
-          path: overlay-out/*.jar
-          if-no-files-found: warn
-      - name: Push logs
-        if: always()
-        working-directory: .
-        run: |
-          mkdir -p logs && cp overlay-*.log logs/ 2>/dev/null || true
-          [ -d mods/ember-overlay/run/logs ] && cp -r mods/ember-overlay/run/logs logs/game-logs || true
-          [ -d mods/ember-overlay/run/crash-reports ] && cp -r mods/ember-overlay/run/crash-reports logs/ || true
-          echo "${{ job.status }}" > logs/STATUS
-          cd logs && git init -q -b main && git config user.name ci && git config user.email ci@users.noreply.github.com
-          git add -A && git commit -qm "overlay logs ${{ github.run_number }}"
-          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" HEAD:refs/heads/ci-logs/overlay-${{ github.run_number }}
+    uses: ./.github/workflows/overlay.yml
 
   windows:
     name: Windows installer
@@ -76,31 +31,43 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - uses: dtolnay/rust-toolchain@stable
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: ". -> target"
       # The official, open-source playit.gg agent (BSD-2), built from a pinned commit and
       # shipped inside the installer so "Invite friends" works without separate downloads.
+      # Built once per pinned commit, then restored from cache (saves ~3 minutes per build).
+      - name: Cached playit.gg agent
+        id: playit-cache
+        uses: actions/cache@v4
+        with:
+          path: playit-build
+          key: playitd-89638d480be8d26cdbbdfcb14bc80b356d4e8492-${{ runner.os }}
       - name: Build the playit.gg agent
         continue-on-error: true
         shell: bash
         run: |
-          cargo install --git https://github.com/playit-cloud/playit-agent --rev 89638d480be8d26cdbbdfcb14bc80b356d4e8492 --locked playitd --root playit-build 2>&1 | tail -40 | tee playit-build.log
+          [ -f playit-build/bin/playitd.exe ] || cargo install --git https://github.com/playit-cloud/playit-agent --rev 89638d480be8d26cdbbdfcb14bc80b356d4e8492 --locked playitd --root playit-build 2>&1 | tail -40 | tee playit-build.log
           cp playit-build/bin/playitd.exe apps/desktop/src-tauri/resources/playit/
           curl -fsSL https://raw.githubusercontent.com/playit-cloud/playit-agent/89638d480be8d26cdbbdfcb14bc80b356d4e8492/LICENSE.txt -o apps/desktop/src-tauri/resources/playit/LICENSE-playit.txt || true
           ls -la apps/desktop/src-tauri/resources/playit/ | tee -a playit-build.log
-      - name: Fetch overlay jar
+      - name: Fetch overlay jars
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: overlay-jar
+          pattern: overlay-*
+          merge-multiple: true
           path: overlay-out
       - name: Bundle overlay into the installer
-        shell: pwsh
+        shell: bash
         run: |
-          $jar = Get-ChildItem overlay-out -Filter *.jar -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($jar) { Copy-Item $jar.FullName apps/desktop/src-tauri/resources/overlay/ember-overlay-26.3.jar; "bundled $($jar.Name)" } else { "no overlay jar this run" }
+          mkdir -p apps/desktop/src-tauri/resources/overlay
+          cp overlay-out/ember-overlay-*.jar apps/desktop/src-tauri/resources/overlay/ 2>/dev/null || true
+          # Which jar serves which Minecraft versions (read by the launcher).
+          cp mods/ember-overlay/versions.json apps/desktop/src-tauri/resources/overlay/versions.json
+          ls -la apps/desktop/src-tauri/resources/overlay | tee overlay-bundle.log
       # `npm install` (not `npm ci`): the lockfile was created on Linux and npm
       # sometimes skips Windows-only optional packages with `ci`.
       - name: Install JS dependencies
@@ -144,7 +111,7 @@ jobs:
         if: always()
         shell: bash
         run: |
-          mkdir -p logs && cp win-*.log playit-build.log logs/ 2>/dev/null || true
+          mkdir -p logs && cp win-*.log playit-build.log overlay-bundle.log logs/ 2>/dev/null || true
           echo "${{ job.status }}" > logs/STATUS
           cd logs && git init -q -b main && git config user.name ci && git config user.email ci@users.noreply.github.com
           git add -A && git commit -qm "windows logs ${{ github.run_number }}"

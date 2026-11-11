@@ -291,6 +291,11 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
         Ok(_) => {}
         Err(e) => tracing::warn!(error = %e, "could not check essential mods (offline?)"),
     }
+    // In-game menu: install into older instances, update after an Ember update, honour the toggle.
+    match launcher_core::perf_bundle::ensure_overlay(&state.paths.bundled_resources(), &state.paths.instance(&inst.id), &inst).await {
+        Ok(s) => tracing::info!(state = ?s, "ember overlay"),
+        Err(e) => tracing::warn!(error = %e, "could not update the in-game menu"),
+    }
     let component = prepared.json.java_version.as_ref().map(|j| j.component.clone()).unwrap_or_else(|| "java-runtime-delta".into());
     let java = java::ensure_runtime(&state.client, &state.paths, &component, Some(emit("java"))).await?;
 
