@@ -29,4 +29,5 @@ public final class GfxImpl implements Gfx {
     @Override public void effectIcon(net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
         g.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, Era.effectSprite(effect), x, y, 18, 18);
     }
+    @Override public void canvas(dev.ember.overlay.api.Canvas c, int x, int y) { Compat.drawCanvas(g, c, x, y); }
 }

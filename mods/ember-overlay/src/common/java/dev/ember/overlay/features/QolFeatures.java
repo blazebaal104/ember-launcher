@@ -145,21 +145,27 @@ public final class QolFeatures {
     /** Full-screen map of explored terrain (see map.WorldMapScreen). */
     public static final class WorldMap extends Simple {
         final Setting.Choice zoom;
-        final Setting.Bool death, cursor;
+        final Setting.Bool death, cursor, trail;
 
         WorldMap() {
             super("worldmap", "World map", "A full-screen map of everything you've explored, like Xaero's World Map. Press its key to open it. It also records terrain while you play, even with the minimap off.");
             zoom = add(new Setting.Choice("zoom", "Opens zoomed", 2, "Closest", "Close", "Normal", "Far", "Farthest"));
             death = add(new Setting.Bool("death", "Show where you died", true).help("Needs Death coordinates on."));
+            trail = add(new Setting.Bool("trail", "Show your recent path", true));
             cursor = add(new Setting.Bool("cursor", "Coordinates under the cursor", true));
         }
 
-        public int startZoom() {
-            return new int[]{1, 2, 3, 5, 7}[zoom.v];
+        /** Pixels per block the map opens at. */
+        public float startZoom() {
+            return new float[]{4f, 2f, 1f, 0.25f, 0.0625f}[zoom.v];
         }
 
         public boolean showDeath() {
             return death.v;
+        }
+
+        public boolean showTrail() {
+            return trail.v;
         }
 
         public boolean showCursor() {

@@ -26,7 +26,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Minecraft 1.21.x edition of the version adapter (era settings: {'hud': 'old', 'keys': 'string', 'ids': 'resloc', 'leave': 'old', 'debug': True, 'pose': 'stack', 'input': 'old', 'sprite': 'rendertype'}).
+ * Minecraft 1.21.x edition of the version adapter (era settings: {'hud': 'old', 'keys': 'string', 'ids': 'resloc', 'leave': 'old', 'debug': True, 'pose': 'stack', 'input': 'old', 'sprite': 'rendertype', 'tex': 'rt_abgr'}).
  * Same static API as the 26.x edition in src/modern.
  */
 public final class Compat {
@@ -74,6 +74,49 @@ public final class Compat {
 
     public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
         g.blitSprite(net.minecraft.client.renderer.RenderType::guiTextured, Minecraft.getInstance().getMobEffectTextures().get(effect), x, y, 18, 18);
+    }
+
+    // ---------------------------------------------------------------- dynamic textures
+
+    private static int canvasCount;
+
+    private static int abgr(int argb) {
+        return (argb & 0xFF00FF00) | ((argb >> 16) & 0xFF) | ((argb & 0xFF) << 16);
+    }
+
+    private static final class CanvasImpl implements dev.ember.overlay.api.Canvas {
+        final net.minecraft.client.renderer.texture.DynamicTexture tex;
+        final ResourceLocation id;
+        final int w, h;
+
+        CanvasImpl(String name, int w, int h) {
+            this.w = w;
+            this.h = h;
+            this.tex = new net.minecraft.client.renderer.texture.DynamicTexture(w, h, true);
+            this.id = id("canvas/" + name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_") + "_" + (canvasCount++));
+            Minecraft.getInstance().getTextureManager().register(id, tex);
+        }
+
+        @Override public int width() { return w; }
+        @Override public int height() { return h; }
+        @Override public void set(int x, int y, int argb) { tex.getPixels().setPixel(x, y, abgr(argb)); }
+
+        @Override
+        public void clear() {
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) set(x, y, 0);
+        }
+
+        @Override public void upload() { tex.upload(); }
+        @Override public void close() { Minecraft.getInstance().getTextureManager().release(id); }
+    }
+
+    public static dev.ember.overlay.api.Canvas canvas(String name, int w, int h) {
+        return new CanvasImpl(name, w, h);
+    }
+
+    public static void drawCanvas(GuiGraphics g, dev.ember.overlay.api.Canvas canvas, int x, int y) {
+        CanvasImpl c = (CanvasImpl) canvas;
+        g.blit(net.minecraft.client.renderer.RenderType::guiTextured, c.id, x, y, 0f, 0f, c.w, c.h, c.w, c.h);
     }
 
     public static void afterScreenDraw(Screen screen, Consumer<Gfx> draw) {

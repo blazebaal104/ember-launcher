@@ -119,6 +119,45 @@ public final class Compat {
         return Era.hudHidden(mc) || mc.getDebugOverlay().showDebugScreen();
     }
 
+    // ---------------------------------------------------------------- dynamic textures
+
+    private static int canvasCount;
+
+    private static final class CanvasImpl implements dev.ember.overlay.api.Canvas {
+        final net.minecraft.client.renderer.texture.DynamicTexture tex;
+        final Identifier id;
+        final int w, h;
+
+        CanvasImpl(String name, int w, int h) {
+            this.w = w;
+            this.h = h;
+            this.tex = new net.minecraft.client.renderer.texture.DynamicTexture(() -> name, w, h, true);
+            this.id = id("canvas/" + name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_") + "_" + (canvasCount++));
+            Minecraft.getInstance().getTextureManager().register(id, tex);
+        }
+
+        @Override public int width() { return w; }
+        @Override public int height() { return h; }
+        @Override public void set(int x, int y, int argb) { tex.getPixels().setPixel(x, y, argb); }
+
+        @Override
+        public void clear() {
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) set(x, y, 0);
+        }
+
+        @Override public void upload() { tex.upload(); }
+        @Override public void close() { Minecraft.getInstance().getTextureManager().release(id); }
+    }
+
+    public static dev.ember.overlay.api.Canvas canvas(String name, int w, int h) {
+        return new CanvasImpl(name, w, h);
+    }
+
+    public static void drawCanvas(net.minecraft.client.gui.GuiGraphicsExtractor g, dev.ember.overlay.api.Canvas canvas, int x, int y) {
+        CanvasImpl c = (CanvasImpl) canvas;
+        g.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, c.id, x, y, 0f, 0f, c.w, c.h, c.w, c.h);
+    }
+
     /** True while the loading screen (resource reload) is showing. */
     public static boolean loading(Minecraft mc) {
         return Era.loading(mc);

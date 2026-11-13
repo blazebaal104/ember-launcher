@@ -12,17 +12,24 @@ The 1.21.x line changed a few APIs between releases; each era flips the relevant
   sprite: how effect icons are drawn: "atlas" = MobEffectTextureManager (1.21.1),
           "rendertype" = blitSprite(RenderType::guiTextured, atlas sprite, ...) (1.21.2-1.21.5),
           "pipeline" = blitSprite(RenderPipelines.GUI_TEXTURED, ...) (1.21.6+)
+  tex:   dynamic textures (minimap, world map tiles, icons):
+         "e0" = DynamicTexture(w, h, clear), setPixelRGBA (ABGR), blit(id, x, y, z, u, v, ...) (1.21.1)
+         "rt_abgr" = DynamicTexture(w, h, clear), setPixel (ABGR), blit(RenderType::guiTextured, ...) (1.21.2-1.21.4)
+         "rt_argb" = DynamicTexture(label, w, h, clear), setPixel (ARGB), blit(RenderType::guiTextured, ...) (1.21.5)
+         "pipe" = DynamicTexture(label, w, h, clear), setPixel (ARGB), blit(RenderPipelines.GUI_TEXTURED, ...) (1.21.6+)
+(signatures verified with the CI "Mapped signatures" dev step)
 Also writes EmberScreen.java (the overlay's screen base class) for each era.
 Run: python3 tools/gen_legacy_compat.py   (CI runs it before building)
 """
 import os
 
 ERAS = {
-    "e0": dict(hud="old", keys="string", ids="resloc", leave="old", debug=True, pose="stack", input="old", sprite="atlas"),
-    "e1": dict(hud="old", keys="string", ids="resloc", leave="old", debug=True, pose="stack", input="old", sprite="rendertype"),
-    "e2": dict(hud="new", keys="string", ids="resloc", leave="new", debug=True, pose="matrix", input="old", sprite="pipeline"),
-    "e3": dict(hud="new", keys="category", ids="resloc", leave="new", debug=False, pose="matrix", input="new", sprite="pipeline"),
-    "e4": dict(hud="new", keys="category", ids="ident", leave="new", debug=False, pose="matrix", input="new", sprite="pipeline"),
+    "e0": dict(hud="old", keys="string", ids="resloc", leave="old", debug=True, pose="stack", input="old", sprite="atlas", tex="e0"),
+    "e1": dict(hud="old", keys="string", ids="resloc", leave="old", debug=True, pose="stack", input="old", sprite="rendertype", tex="rt_abgr"),
+    "e15": dict(hud="old", keys="string", ids="resloc", leave="old", debug=True, pose="stack", input="old", sprite="rendertype", tex="rt_argb"),
+    "e2": dict(hud="new", keys="string", ids="resloc", leave="new", debug=True, pose="matrix", input="old", sprite="pipeline", tex="pipe"),
+    "e3": dict(hud="new", keys="category", ids="resloc", leave="new", debug=False, pose="matrix", input="new", sprite="pipeline", tex="pipe"),
+    "e4": dict(hud="new", keys="category", ids="ident", leave="new", debug=False, pose="matrix", input="new", sprite="pipeline", tex="pipe"),
 }
 
 def render(e):
@@ -121,6 +128,57 @@ def render(e):
         sprite = '''    public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
         g.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, net.minecraft.client.gui.Gui.getMobEffectSprite(effect), x, y, 18, 18);
     }'''
+    t = e["tex"]
+    ctor = "new net.minecraft.client.renderer.texture.DynamicTexture(w, h, true)" if t in ("e0", "rt_abgr") else "new net.minecraft.client.renderer.texture.DynamicTexture(() -> name, w, h, true)"
+    setpx = {"e0": "tex.getPixels().setPixelRGBA(x, y, abgr(argb))", "rt_abgr": "tex.getPixels().setPixel(x, y, abgr(argb))"}.get(t, "tex.getPixels().setPixel(x, y, argb)")
+    if t == "e0":
+        blit = "g.blit(c.id, x, y, 0, 0f, 0f, c.w, c.h, c.w, c.h)"
+    elif t in ("rt_abgr", "rt_argb"):
+        blit = "g.blit(net.minecraft.client.renderer.RenderType::guiTextured, c.id, x, y, 0f, 0f, c.w, c.h, c.w, c.h)"
+    else:
+        blit = "g.blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, c.id, x, y, 0f, 0f, c.w, c.h, c.w, c.h)"
+    canvas = f'''    // ---------------------------------------------------------------- dynamic textures
+
+    private static int canvasCount;
+
+    private static int abgr(int argb) {{
+        return (argb & 0xFF00FF00) | ((argb >> 16) & 0xFF) | ((argb & 0xFF) << 16);
+    }}
+
+    private static final class CanvasImpl implements dev.ember.overlay.api.Canvas {{
+        final net.minecraft.client.renderer.texture.DynamicTexture tex;
+        final {Id} id;
+        final int w, h;
+
+        CanvasImpl(String name, int w, int h) {{
+            this.w = w;
+            this.h = h;
+            this.tex = {ctor};
+            this.id = id("canvas/" + name.toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9_.-]", "_") + "_" + (canvasCount++));
+            Minecraft.getInstance().getTextureManager().register(id, tex);
+        }}
+
+        @Override public int width() {{ return w; }}
+        @Override public int height() {{ return h; }}
+        @Override public void set(int x, int y, int argb) {{ {setpx}; }}
+
+        @Override
+        public void clear() {{
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) set(x, y, 0);
+        }}
+
+        @Override public void upload() {{ tex.upload(); }}
+        @Override public void close() {{ Minecraft.getInstance().getTextureManager().release(id); }}
+    }}
+
+    public static dev.ember.overlay.api.Canvas canvas(String name, int w, int h) {{
+        return new CanvasImpl(name, w, h);
+    }}
+
+    public static void drawCanvas(GuiGraphics g, dev.ember.overlay.api.Canvas canvas, int x, int y) {{
+        CanvasImpl c = (CanvasImpl) canvas;
+        {blit};
+    }}'''
     if e["pose"] == "stack":
         pose = '''    public static void pushScale(GuiGraphics g, float x, float y, float s) {
         g.pose().pushPose();
@@ -175,6 +233,8 @@ public final class Compat {{
 {pose}
 
 {sprite}
+
+{canvas}
 
     public static void afterScreenDraw(Screen screen, Consumer<Gfx> draw) {{
         GfxImpl gfx = new GfxImpl();

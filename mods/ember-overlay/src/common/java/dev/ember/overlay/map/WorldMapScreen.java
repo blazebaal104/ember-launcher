@@ -36,6 +36,7 @@ public final class WorldMapScreen extends EmberScreen {
     private int menuX = -1, menuY;
     private double menuWX, menuWZ;
     private Waypoints.Waypoint selected;
+    private boolean opened;
     private EditBox nameBox;
 
     public WorldMapScreen() {
@@ -59,9 +60,11 @@ public final class WorldMapScreen extends EmberScreen {
             centerX = minecraft.player.getX();
             centerZ = minecraft.player.getZ();
         }
-        if (zoomTarget <= 0) zoomTarget = 1;
-        int start = QolFeatures.worldMap.startZoom();
-        if (zoom == zoomTarget && start >= 0) zoom = zoomTarget = new float[]{8, 4, 2, 1, 0.5f, 0.25f, 0.125f, 0.0625f}[Math.min(7, start)];
+        if (!opened) {
+            opened = true;
+            zoom = zoomTarget = QolFeatures.worldMap.startZoom();
+            showTrail = QolFeatures.worldMap.showTrail();
+        }
         nameBox = new EditBox(font, 0, 0, 120, 12, Component.literal("Name"));
         nameBox.setBordered(false);
         nameBox.setMaxLength(32);
