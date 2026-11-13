@@ -156,8 +156,8 @@ public final class WorldMapScreen extends EmberScreen {
         else if (k == InputConstants.KEY_UP) pan(0, -step);
         else if (k == InputConstants.KEY_DOWN) pan(0, step);
         else if (k == InputConstants.KEY_SPACE) follow = true;
-        else if (k == InputConstants.KEY_EQUALS || k == InputConstants.KEY_ADD) zoomTarget = Math.min(16f, zoomTarget * 1.5f);
-        else if (k == InputConstants.KEY_MINUS || k == InputConstants.KEY_SUBTRACT) zoomTarget = Math.max(1 / 16f, zoomTarget / 1.5f);
+        else if (k == InputConstants.KEY_EQUALS) zoomTarget = Math.min(16f, zoomTarget * 1.5f);
+        else if (k == InputConstants.KEY_MINUS) zoomTarget = Math.max(1 / 16f, zoomTarget / 1.5f);
         else if (k == InputConstants.KEY_G) showGrid = !showGrid;
         else return false;
         return true;

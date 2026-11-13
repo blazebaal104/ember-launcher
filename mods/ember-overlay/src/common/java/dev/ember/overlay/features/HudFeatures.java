@@ -866,7 +866,6 @@ public final class HudFeatures {
                 g.fill(wx - 2, wy - 2, wx + 3, wy + 3, 0xC0000000);
                 g.fill(wx - 1, wy - 1, wx + 2, wy + 2, w.color);
             }
-            int cx = x + r, cy = y + r;
             for (Dot d : snapshot) {
                 int ix = cx + (int) Math.round(d.dx() / bpp), iy = cy + (int) Math.round(d.dz() / bpp);
                 if (circle ? (ix - cx) * (ix - cx) + (iy - cy) * (iy - cy) > (r - 2) * (r - 2) : Math.abs(ix - cx) > r - 2 || Math.abs(iy - cy) > r - 2) continue;
