@@ -34,7 +34,7 @@ public final class Config {
                 if (mine != null) {
                     for (Setting s : f.settings) {
                         JsonElement e = mine.get(s.key);
-                        if (e == null) continue;
+                        if (e == null || e.isJsonNull()) continue;
                         try {
                             s.load(e);
                         } catch (Exception ignored) {

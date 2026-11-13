@@ -211,4 +211,33 @@ public abstract class Setting {
         @Override public JsonElement save() { return new JsonPrimitive(v); }
         @Override public void load(JsonElement e) { set(e.getAsString()); }
     }
+
+    /**
+     * A key binding. It IS the vanilla key mapping (so it also shows, and can be changed, in
+     * Options > Controls); the menu just offers a quicker way to set it.
+     */
+    public static final class Key extends Setting {
+        public final net.minecraft.client.KeyMapping mapping;
+
+        public Key(String key, String label, net.minecraft.client.KeyMapping mapping) {
+            super(key, label);
+            this.mapping = mapping;
+        }
+
+        public String text() {
+            return mapping.isUnbound() ? "Not set" : mapping.getTranslatedKeyMessage().getString();
+        }
+
+        public void bind(com.mojang.blaze3d.platform.InputConstants.Key k) {
+            mapping.setKey(k);
+            net.minecraft.client.KeyMapping.resetMapping();
+            net.minecraft.client.Minecraft.getInstance().options.save();
+            changed();
+        }
+
+        @Override public void reset() { bind(mapping.getDefaultKey()); }
+        // Stored by Minecraft in options.txt, not in our config.
+        @Override public com.google.gson.JsonElement save() { return com.google.gson.JsonNull.INSTANCE; }
+        @Override public void load(com.google.gson.JsonElement e) {}
+    }
 }

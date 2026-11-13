@@ -17,7 +17,6 @@ import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.inventory.Slot;
-import net.minecraft.world.item.Items;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,25 +33,32 @@ public final class QolFeatures {
     public static Macros macros;
     public static ChatFilter chatFilter;
     public static ServerData lastServer;
+    public static WorldMap worldMap;
+
+    public record Death(int x, int y, int z, String dimension) {}
+
+    /** Where you last died (for the world map). */
+    public static volatile Death lastDeath;
 
     public static void registerAll() {
-        macros = register(new Macros().icon(Items.WRITABLE_BOOK));
-        serverSwitcher = register(new Simple("server_switcher", "Quick server switcher", "Press a key to jump to any server in your list without going back to the title screen.").icon(Items.ENDER_PEARL));
-        register(new Freelook().icon(Items.ENDER_EYE));
-        snapLook = register(new Simple("snap_look", "Snap look", "Turn around 180° instantly with one key.").icon(Items.RECOVERY_COMPASS));
-        chatFilter = register(new ChatFilter().icon(Items.HOPPER));
-        register(new InventorySearch().icon(Items.CHEST));
-        screenshots = register(new Simple("screenshot_manager", "Screenshot manager", "Browse and open this instance's screenshots without leaving the game.").icon(Items.PAINTING));
-        memoryCleaner = register(new Simple("memory_cleaner", "Memory cleaner", "A key that frees unused memory. Helps after long sessions; it won't add FPS.").icon(Items.BUCKET));
-        register(new ToggleKey("toggle_sprint", "Toggle sprint", "Tap sprint once to keep sprinting, instead of holding it.").icon(Items.LEATHER_BOOTS));
-        register(new ToggleKey("toggle_sneak", "Toggle sneak", "Tap sneak once to keep sneaking, instead of holding it.").icon(Items.IRON_BOOTS));
-        register(new DeathCoords().icon(Items.SKELETON_SKULL));
-        register(new AutoReconnect().icon(Items.LEAD));
-        copyCoords = register(new Simple("copy_coords", "Copy coordinates", "A key that copies your X Y Z, ready to paste in chat or Discord.").icon(Items.PAPER));
+        macros = register(new Macros());
+        serverSwitcher = register(new Simple("server_switcher", "Quick server switcher", "Press a key to jump to any server in your list without going back to the title screen."));
+        register(new Freelook());
+        worldMap = register(new WorldMap());
+        snapLook = register(new Simple("snap_look", "Snap look", "Turn around 180° instantly with one key."));
+        chatFilter = register(new ChatFilter());
+        register(new InventorySearch());
+        screenshots = register(new Simple("screenshot_manager", "Screenshot manager", "Browse and open this instance's screenshots without leaving the game."));
+        memoryCleaner = register(new Simple("memory_cleaner", "Memory cleaner", "A key that frees unused memory. Helps after long sessions; it won't add FPS."));
+        register(new ToggleKey("toggle_sprint", "Toggle sprint", "Tap sprint once to keep sprinting, instead of holding it."));
+        register(new ToggleKey("toggle_sneak", "Toggle sneak", "Tap sneak once to keep sneaking, instead of holding it."));
+        register(new DeathCoords());
+        register(new AutoReconnect());
+        copyCoords = register(new Simple("copy_coords", "Copy coordinates", "A key that copies your X Y Z, ready to paste in chat or Discord."));
         register(new Simple("server_memory", "Remember last server", "Remembers the server you were on, so the Reconnect button works after a kick.") {
             @Override public boolean wantsTick() { return true; }
             @Override public void tick(Minecraft mc) { if (mc.getCurrentServer() != null) lastServer = mc.getCurrentServer(); }
-        }.icon(Items.LODESTONE));
+        });
     }
 
     static class Simple extends Feature {
@@ -133,6 +139,35 @@ public final class QolFeatures {
                 out.add(Pattern.compile(Pattern.quote(r.v.trim()), Pattern.CASE_INSENSITIVE));
             }
             compiled = List.copyOf(out);
+        }
+    }
+
+    /** Full-screen map of explored terrain (see map.WorldMapScreen). */
+    public static final class WorldMap extends Simple {
+        final Setting.Choice zoom;
+        final Setting.Bool death, cursor;
+
+        WorldMap() {
+            super("worldmap", "World map", "A full-screen map of everything you've explored, like Xaero's World Map. Press its key to open it. It also records terrain while you play, even with the minimap off.");
+            zoom = add(new Setting.Choice("zoom", "Opens zoomed", 2, "Closest", "Close", "Normal", "Far", "Farthest"));
+            death = add(new Setting.Bool("death", "Show where you died", true).help("Needs Death coordinates on."));
+            cursor = add(new Setting.Bool("cursor", "Coordinates under the cursor", true));
+        }
+
+        public int startZoom() {
+            return new int[]{1, 2, 3, 5, 7}[zoom.v];
+        }
+
+        public boolean showDeath() {
+            return death.v;
+        }
+
+        public boolean showCursor() {
+            return cursor.v;
+        }
+
+        public net.minecraft.client.KeyMapping openKey() {
+            return key;
         }
     }
 
@@ -228,6 +263,7 @@ public final class QolFeatures {
                 String c = String.format(Locale.ROOT, "%d %d %d", mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ());
                 Compat.say(mc, "[Ember] You died at " + c + " in " + Compat.dimension(mc));
                 if (copy.v) mc.keyboardHandler.setClipboard(c);
+                lastDeath = new Death(mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ(), mc.level.dimension().toString());
             }
             wasDead = dead;
         }

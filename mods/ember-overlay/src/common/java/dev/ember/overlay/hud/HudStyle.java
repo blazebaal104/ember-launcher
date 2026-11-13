@@ -20,15 +20,15 @@ public final class HudStyle {
     public static void plate(Gfx g, HudLook look, int x1, int y1, int x2, int y2) {
         int bg = look == null ? BG : look.bg();
         if (bg == 0) return;
-        if (look == null || look.rounded.v) Draw.round(g, x1, y1, x2, y2, 2, bg);
+        if (look == null || look.rounded()) Draw.round(g, x1, y1, x2, y2, 2, bg);
         else g.fill(x1, y1, x2, y2, bg);
     }
 
     /** Draws a label plate (one or more lines split by '\n') and returns the height used, gap included. */
     public static int label(Gfx g, Minecraft mc, String text, int x, int y, HudLook look, int color) {
         if (text == null || text.isEmpty()) return 0;
-        int pad = look == null ? 3 : look.padding.v;
-        boolean shadow = look != null && look.shadow.v;
+        int pad = look == null ? 3 : look.padding();
+        boolean shadow = look != null && look.shadow();
         int lines = 1, w = 0, start = 0;
         for (int i = 0; i <= text.length(); i++) {
             if (i == text.length() || text.charAt(i) == '\n') {
@@ -53,6 +53,6 @@ public final class HudStyle {
     }
 
     public static int label(Gfx g, Minecraft mc, String text, int x, int y, HudLook look) {
-        return label(g, mc, text, x, y, look, look == null ? TEXT : look.text.v);
+        return label(g, mc, text, x, y, look, look == null ? TEXT : look.textColor());
     }
 }

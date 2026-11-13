@@ -26,7 +26,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Minecraft 1.21.x edition of the version adapter (era settings: {'hud': 'old', 'keys': 'string', 'ids': 'resloc', 'leave': 'old', 'debug': True, 'pose': 'stack', 'input': 'old'}).
+ * Minecraft 1.21.x edition of the version adapter (era settings: {'hud': 'old', 'keys': 'string', 'ids': 'resloc', 'leave': 'old', 'debug': True, 'pose': 'stack', 'input': 'old', 'sprite': 'rendertype'}).
  * Same static API as the 26.x edition in src/modern.
  */
 public final class Compat {
@@ -37,6 +37,7 @@ public final class Compat {
     public static final int KEY_RSHIFT = InputConstants.KEY_RSHIFT;
     public static final int KEY_C = InputConstants.KEY_C;
     public static final int KEY_LALT = InputConstants.KEY_LALT;
+    public static final int KEY_M = InputConstants.KEY_M;
     private static final GfxImpl HUD_GFX = new GfxImpl();
 
     public static ResourceLocation id(String path) {
@@ -67,6 +68,10 @@ public final class Compat {
 
     public static void popScale(GuiGraphics g) {
         g.pose().popPose();
+    }
+
+    public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
+        g.blitSprite(net.minecraft.client.renderer.RenderType::guiTextured, net.minecraft.client.gui.Gui.getMobEffectSprite(effect), x, y, 18, 18);
     }
 
     public static void afterScreenDraw(Screen screen, Consumer<Gfx> draw) {

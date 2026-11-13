@@ -32,15 +32,17 @@ import java.util.Map;
  */
 public final class OverlayScreen extends EmberScreen {
     private enum Filter {
-        ALL("All features", null), ON("Enabled", null), HUD("HUD", Category.HUD), VISUAL("Visual", Category.VISUAL),
-        QOL("Utility", Category.QOL), OWNED("In your mods", null);
+        ALL("All features", null, "ui_all"), ON("Enabled", null, "ui_on"), HUD("HUD", Category.HUD, "ui_hud"),
+        VISUAL("Visual", Category.VISUAL, "ui_visual"), QOL("Utility", Category.QOL, "ui_utility"), OWNED("In your mods", null, "ui_owned");
 
         final String label;
         final Category category;
+        final String icon;
 
-        Filter(String label, Category category) {
+        Filter(String label, Category category, String icon) {
             this.label = label;
             this.category = category;
+            this.icon = icon;
         }
     }
 
@@ -52,6 +54,8 @@ public final class OverlayScreen extends EmberScreen {
     private final Map<Setting.Text, EditBox> fields = new IdentityHashMap<>();
     private EditBox search;
     private Feature open;
+    /** Key setting waiting for a key press. */
+    private Setting.Key capturing;
     private boolean showAdvanced;
     private float scroll, scrollTarget, scrollMax, dScroll, dScrollTarget, dScrollMax;
     private float fade = 1;
@@ -122,6 +126,7 @@ public final class OverlayScreen extends EmberScreen {
 
     private void closeDetails() {
         open = null;
+        capturing = null;
         rebuildWidgets();
     }
 
@@ -132,6 +137,7 @@ public final class OverlayScreen extends EmberScreen {
 
     @Override
     public void onClose() {
+        if (capturing != null) return; // Esc while choosing a key = "no key" (handled in onKey)
         if (open != null) closeDetails(); // Esc on a settings page goes back to the grid
         else closeMenu();
     }
@@ -147,6 +153,7 @@ public final class OverlayScreen extends EmberScreen {
     @Override
     protected boolean onMousePress(double x, double y, int button) {
         if (button != 0) return false;
+        capturing = null;
         if (!isOverField(x, y)) {
             setFocused(null);
             if (search != null) search.setFocused(false);
@@ -159,6 +166,15 @@ public final class OverlayScreen extends EmberScreen {
         if (search != null && search.visible && search.isMouseOver(x, y)) return true;
         for (EditBox b : fields.values()) if (b.visible && b.isMouseOver(x, y)) return true;
         return false;
+    }
+
+    @Override
+    protected boolean onKey(com.mojang.blaze3d.platform.InputConstants.Key key) {
+        if (capturing == null) return false;
+        if (key.getValue() == com.mojang.blaze3d.platform.InputConstants.KEY_ESCAPE) capturing.bind(com.mojang.blaze3d.platform.InputConstants.UNKNOWN);
+        else capturing.bind(key);
+        capturing = null;
+        return true;
     }
 
     @Override
@@ -219,13 +235,9 @@ public final class OverlayScreen extends EmberScreen {
         return out;
     }
 
-    private void item(Gfx g, Feature f, int x, int y, float scale) {
-        if (fade < 0.6f) return;
-        var stack = f.icon();
-        if (stack == null) return;
-        g.push(x, y, scale);
-        g.item(stack, 0, 0);
-        g.pop();
+    private void icon(Gfx g, String id, float x, float y, float size, int color) {
+        if (fade < 0.05f) return;
+        Icons.draw(g, Icons.has(id) ? id : "ui_settings", x, y, size, c(color));
     }
 
     /** Rounded button; returns true when hovered. */
@@ -327,11 +339,7 @@ public final class OverlayScreen extends EmberScreen {
         int bx = px + pw - 24, by = py + 6;
         boolean hov = ui.hover(bx, by, bx + 16, by + 16);
         Draw.round(g, bx, by, bx + 16, by + 16, 4, c(hov ? Theme.RED : Draw.withAlpha(Theme.RAISED, 200)));
-        int xc = hov ? 0xFFFFFFFF : Theme.MUTED;
-        for (int i = 0; i < 7; i++) {
-            g.fill(bx + 4 + i, by + 4 + i, bx + 5 + i, by + 5 + i, c(xc));
-            g.fill(bx + 10 - i, by + 4 + i, bx + 11 - i, by + 5 + i, c(xc));
-        }
+        icon(g, "ui_close", bx + 3, by + 3, 10, hov ? 0xFFFFFFFF : Theme.MUTED);
         ui.click(bx, by, bx + 16, by + 16, this::closeMenu);
     }
 
@@ -354,8 +362,9 @@ public final class OverlayScreen extends EmberScreen {
                 Draw.round(g, x, y, x + w, y + 16, 3, c(Draw.withAlpha(Theme.ACCENT, 48)));
                 Draw.round(g, x, y + 3, x + 2, y + 13, 1, c(Theme.ACCENT));
             } else if (hov) Draw.round(g, x, y, x + w, y + 16, 3, c(Draw.withAlpha(Theme.RAISED, 200)));
-            String label = trim(f.label, w - 26);
-            text(g, label, x + 7, y + 4, active || hov ? Theme.TEXT : Draw.mix(Theme.MUTED, Theme.TEXT, 0.35f));
+            String label = trim(f.label, w - 38);
+            icon(g, f.icon, x + 6, y + 3, 10, active ? Theme.ACCENT : hov ? Theme.TEXT : Theme.MUTED);
+            text(g, label, x + 19, y + 4, active || hov ? Theme.TEXT : Draw.mix(Theme.MUTED, Theme.TEXT, 0.35f));
             String n = String.valueOf(count(f));
             text(g, n, x + w - 5 - font.width(n), y + 4, active ? Theme.ACCENT : Theme.MUTED);
             ui.click(x, y, x + w, y + 16, () -> {
@@ -414,10 +423,7 @@ public final class OverlayScreen extends EmberScreen {
         boolean focused = search.isFocused();
         Draw.round(g, sx, sy, sx + sw, sy + 18, 4, c(focused ? Theme.ACCENT : Draw.withAlpha(Theme.LINE, 220)));
         Draw.round(g, sx + 1, sy + 1, sx + sw - 1, sy + 17, 3, c(Draw.withAlpha(Theme.SURFACE, 240)));
-        Draw.circle(g, sx + 9, sy + 8, 4, c(Theme.MUTED));
-        Draw.circle(g, sx + 9, sy + 8, 3, c(Theme.SURFACE));
-        g.fill(sx + 11, sy + 11, sx + 13, sy + 13, c(Theme.MUTED));
-        g.fill(sx + 12, sy + 12, sx + 14, sy + 14, c(Theme.MUTED));
+        icon(g, "ui_search", sx + 4, sy + 4, 10, focused ? Theme.ACCENT : Theme.MUTED);
         search.setX(sx + 18);
         search.setY(sy + 5);
         search.setWidth(sw - 22);
@@ -478,11 +484,10 @@ public final class OverlayScreen extends EmberScreen {
         Draw.round(g, x + 1, y + 1, x + w - 1, y + h - 1, 4, c(bg));
         if (onT > 0.01f) Draw.vgradient(g, x + 3, y + 1, x + w - 3, y + 20, c(Draw.withAlpha(Theme.ACCENT, Math.round(34 * onT))), c(Draw.withAlpha(Theme.ACCENT, 0)));
 
-        // icon (lifts slightly on hover)
+        // icon (lifts slightly on hover; accent when on)
         int lift = Math.round(hv * 2);
-        if (!avail) Draw.round(g, x + w / 2 - 13, y + 7 - lift, x + w / 2 + 13, y + 33 - lift, 4, c(0x30000000));
-        item(g, f, x + w / 2 - 12, y + 8 - lift, 1.5f);
-        if (!avail && fade > 0.6f) Draw.round(g, x + w / 2 - 13, y + 7 - lift, x + w / 2 + 13, y + 33 - lift, 4, c(Draw.withAlpha(Theme.SURFACE, 150)));
+        int iconColor = !avail ? Draw.withAlpha(Theme.MUTED, 140) : Draw.mix(Draw.mix(Theme.TEXT, Theme.MUTED, 0.25f), Theme.ACCENT, Math.max(onT, hv * 0.4f));
+        icon(g, f.iconId(), x + w / 2f - 11, y + 8 - lift, 22, iconColor);
 
         textCentered(g, trim(f.name, w - 8), x + w / 2, y + 38, avail ? Theme.TEXT : Theme.MUTED);
         String hint;
@@ -540,7 +545,8 @@ public final class OverlayScreen extends EmberScreen {
 
         // header
         button(g, "‹  Back", x, cy, 44, 15, false, this::closeDetails);
-        item(g, f, x, cy + 22, 2f);
+        Draw.round(g, x, cy + 21, x + 32, cy + 53, 6, c(Draw.withAlpha(f.isEnabled() ? Theme.ACCENT : Theme.RAISED, f.isEnabled() ? 50 : 230)));
+        icon(g, f.iconId(), x + 5, cy + 26, 22, f.isEnabled() ? Theme.ACCENT : Theme.TEXT);
         textScaled(g, "§l" + trim(f.name, (int) ((w - 120) / 1.5f)), x + 40, cy + 24, 1.5f, Theme.TEXT);
         String meta = f.category.label + (f.settings.isEmpty() ? "" : " · " + f.settings.size() + (f.settings.size() == 1 ? " option" : " options"));
         text(g, meta, x + 40, cy + 41, Theme.MUTED);
@@ -582,10 +588,6 @@ public final class OverlayScreen extends EmberScreen {
             y = notice(g, x, y, bw, Theme.MUTED, f.unavailableReason(), f.unavailableReason().startsWith("Needs")
                     ? "This version of Minecraft doesn't let mods change this part of the screen."
                     : "It's on the way. It will appear here, already working, after an Ember update.");
-        }
-        if (f.key != null) {
-            String k = f.key.getTranslatedKeyMessage().getString();
-            y = notice(g, x, y, bw, Theme.ACCENT, "Key: " + k, "Change it in Options › Controls › Key Binds, under Ember.");
         }
 
         y = preview(g, f, x, y, bw);
@@ -758,6 +760,20 @@ public final class OverlayScreen extends EmberScreen {
                 ui.click(rx, mid - 8, rx + ctrlW / 2, mid + 8, () -> ch.set(ch.v - 1));
                 ui.click(rx + ctrlW / 2, mid - 8, x + w, mid + 8, () -> ch.set(ch.v + 1));
             }
+        } else if (s instanceof Setting.Key key) {
+            boolean cap = capturing == key;
+            String label = cap ? "Press a key…" : key.text();
+            int kw = Math.max(70, font.width(label) + 22);
+            int kx = x + w - kw;
+            boolean kh = ui.hover(kx, mid - 8, x + w, mid + 8);
+            Draw.round(g, kx, mid - 8, x + w, mid + 8, 4, c(cap ? Theme.ACCENT : kh ? Theme.LINE : Draw.withAlpha(Theme.INK, 170)));
+            icon(g, "ui_key", kx + 4, mid - 5, 10, cap ? Theme.ON_ACCENT : Theme.MUTED);
+            text(g, label, kx + 17, mid - 4, cap ? Theme.ON_ACCENT : key.mapping.isUnbound() ? Theme.MUTED : Theme.TEXT);
+            if (cap) {
+                String tip = "Esc = no key";
+                text(g, tip, kx - 6 - font.width(tip), mid - 4, Theme.MUTED);
+            }
+            ui.click(kx, mid - 8, x + w, mid + 8, () -> capturing = key);
         } else if (s instanceof Setting.Text tx) {
             EditBox box = fields.get(tx);
             boolean foc = box != null && box.isFocused();

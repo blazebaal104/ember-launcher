@@ -22,4 +22,5 @@ public final class GfxImpl implements Gfx {
     @Override public void pop() { Compat.popScale(g); }
     @Override public void clip(int x1, int y1, int x2, int y2) { g.enableScissor(x1, y1, x2, y2); }
     @Override public void unclip() { g.disableScissor(); }
+    @Override public void effectIcon(net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) { Compat.effectIcon(g, effect, x, y); }
 }

@@ -5,6 +5,9 @@ import dev.ember.overlay.core.Config;
 import dev.ember.overlay.core.Feature;
 import dev.ember.overlay.core.FeatureRegistry;
 import dev.ember.overlay.core.ModScan;
+import dev.ember.overlay.core.Setting;
+import dev.ember.overlay.map.MapData;
+import dev.ember.overlay.map.WorldMapScreen;
 import dev.ember.overlay.features.HudFeatures;
 import dev.ember.overlay.features.QolFeatures;
 import dev.ember.overlay.features.VisualFeatures;
@@ -22,7 +25,7 @@ import net.minecraft.client.Minecraft;
 import java.util.List;
 
 public final class EmberOverlay implements ClientModInitializer {
-    private KeyMapping menu, zoom, freelook, snapLook, stopwatch, memory, servers, cinematic, copyCoords;
+    private KeyMapping menu, zoom, freelook, snapLook, stopwatch, memory, servers, cinematic, copyCoords, worldMap;
     private final KeyMapping[] macros = new KeyMapping[3];
 
     @Override
@@ -42,6 +45,7 @@ public final class EmberOverlay implements ClientModInitializer {
         cinematic = Compat.key("smoothcam", Compat.UNBOUND);
         copyCoords = Compat.key("copycoords", Compat.UNBOUND);
         for (int i = 0; i < macros.length; i++) macros[i] = Compat.key("macro" + (i + 1), Compat.UNBOUND);
+        worldMap = Compat.key("worldmap", Compat.KEY_M);
 
         // Shown on each feature's settings page ("Key: C").
         bindKey("zoom", zoom);
@@ -52,7 +56,10 @@ public final class EmberOverlay implements ClientModInitializer {
         bindKey("server_switcher", servers);
         bindKey("cinematic_key", cinematic);
         bindKey("copy_coords", copyCoords);
-        bindKey("macros", macros[0]);
+        bindKey("worldmap", worldMap);
+        bindKey("macros", macros[2], "Macro 3 key");
+        bindKey("macros", macros[1], "Macro 2 key");
+        bindKey("macros", macros[0], "Macro 1 key");
 
         // Options (gamma etc.) exist once the client has started; apply saved toggles then.
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
@@ -73,14 +80,24 @@ public final class EmberOverlay implements ClientModInitializer {
                 System.out.println("EMBER_SELFTEST_OK features=" + FeatureRegistry.count() + " working=" + available + " settings=" + settings);
             }
         });
-        ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> Config.save());
+        ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> {
+            Config.save();
+            MapData.flush();
+        });
 
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
     }
 
     private static void bindKey(String feature, KeyMapping key) {
+        bindKey(feature, key, "Key");
+    }
+
+    /** Shows the key on the feature's settings page, where it can be changed. */
+    private static void bindKey(String feature, KeyMapping key, String label) {
         Feature f = FeatureRegistry.get(feature);
-        if (f != null) f.key = key;
+        if (f == null) return;
+        if (f.key == null) f.key = key;
+        f.settings.add(0, new Setting.Key("key_" + key.getName().replace('.', '_'), label, key));
     }
 
     /** CI only: `gradle runClient -Pselftest` boots the game, reports, then quits. */
@@ -108,6 +125,8 @@ public final class EmberOverlay implements ClientModInitializer {
             case 260 -> System.out.println("EMBER_SHOT macros");
             case 280 -> Compat.setScreen(mc, new HudEditorScreen(null, null));
             case 310 -> System.out.println("EMBER_SHOT editor");
+            case 315 -> Compat.setScreen(mc, new OverlayScreen(FeatureRegistry.get("potions")));
+            case 320 -> Compat.setScreen(mc, new WorldMapScreen());
             case 330 -> {
                 Compat.setScreen(mc, null);
                 System.out.println("EMBER_SELFTEST_UI_OK");
@@ -126,6 +145,14 @@ public final class EmberOverlay implements ClientModInitializer {
         // Features that asked for ticks (only the enabled ones are in this list).
         List<Feature> ticking = FeatureRegistry.ticking();
         for (int i = 0, n = ticking.size(); i < n; i++) ticking.get(i).tick(mc);
+
+        // HUD modules shown on a key; terrain recording for the minimap / world map
+        for (var m : FeatureRegistry.hud()) if (m.look() != null) m.look().tickKey();
+        boolean mapOn = HudFeatures.minimap.isEnabled() || QolFeatures.worldMap.isEnabled();
+        if (mapOn) MapData.tick(mc, HudFeatures.minimap.caveInNether());
+        while (worldMap.consumeClick()) {
+            if (QolFeatures.worldMap.isEnabled() && Compat.screen(mc) == null && mc.player != null) Compat.setScreen(mc, new WorldMapScreen());
+        }
 
         VisualFeatures.zoomHeld = zoom.isDown();
         Compat.tickZoom(mc);

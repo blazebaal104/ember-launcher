@@ -25,12 +25,12 @@ public class TextHud extends Feature implements HudModule {
     /** Look options come after the feature's own settings. */
     @Override
     public void finishSettings() {
-        if (look == null) look = HudLook.attach(this);
+        if (look == null) look = HudLook.attach(this, HudLook.LABEL);
     }
 
     /** Text colour for this tick; override to colour by value (FPS, ping). */
     protected int colorFor(Minecraft mc) {
-        return look.text.v;
+        return look.textColor();
     }
 
     @Override

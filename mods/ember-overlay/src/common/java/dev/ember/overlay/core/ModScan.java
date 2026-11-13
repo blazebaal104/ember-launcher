@@ -50,6 +50,7 @@ public final class ModScan {
         map("target", "jade", "wthit", "waila", "hwyla", "whatareyoulookingat");
         map("food", "appleskin", "betterhunger", "hungerhud");
         map("minimap", "xaerominimap", "journeymap", "voxelmap", "ftbchunks", "antiquemap", "minimap", "mapatlases");
+        map("radar", "minimap", "radar", "entityradar");
         map("worldmap", "xaeroworldmap", "journeymap", "voxelmap", "ftbchunks", "antiquemap");
         // Visual
         map("fullbright", "fullbright", "gammautils", "brightnessutils", "gammaplus", "nightvisionmod");

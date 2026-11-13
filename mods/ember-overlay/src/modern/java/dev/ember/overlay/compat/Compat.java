@@ -46,6 +46,7 @@ public final class Compat {
     public static final int KEY_RSHIFT = InputConstants.KEY_RSHIFT;
     public static final int KEY_C = InputConstants.KEY_C;
     public static final int KEY_LALT = InputConstants.KEY_LALT;
+    public static final int KEY_M = InputConstants.KEY_M;
 
     public static Identifier id(String path) {
         return Identifier.fromNamespaceAndPath(MOD_ID, path);

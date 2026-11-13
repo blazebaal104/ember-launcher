@@ -24,12 +24,12 @@ public final class HudRenderer {
         Compat.addHud(graphics -> {
             Minecraft mc = Minecraft.getInstance();
             if (suppressed || mc.player == null || Compat.hudHidden(mc)) return;
-            drawAll(graphics, mc);
+            drawAll(graphics, mc, false);
         });
     }
 
     /** Draws every active module; also used by the layout editor. */
-    public static void drawAll(Gfx g, Minecraft mc) {
+    public static void drawAll(Gfx g, Minecraft mc, boolean editor) {
         List<HudModule> modules = FeatureRegistry.hud();
         int sw = mc.getWindow().getGuiScaledWidth(), sh = mc.getWindow().getGuiScaledHeight();
         int column = 4;
@@ -40,6 +40,8 @@ public final class HudRenderer {
                 continue;
             }
             HudLook look = m.look();
+            // "Show while holding key" / "Toggle with key" (the layout editor shows everything)
+            if (!editor && look != null && !look.visible()) continue;
             float s = look == null ? 1f : look.scale();
             float fx = f.posX, fy = f.posY;
             if (fx < 0) {

@@ -11,11 +11,11 @@ import dev.ember.overlay.hud.HudLook;
 import dev.ember.overlay.hud.HudModule;
 import dev.ember.overlay.hud.HudStyle;
 import dev.ember.overlay.mixin.OptionInstanceAccessor;
+import net.minecraft.client.AttackIndicatorStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.phys.EntityHitResult;
 import net.minecraft.world.phys.HitResult;
 
@@ -38,29 +38,29 @@ public final class VisualFeatures {
     public static Crosshair crosshair;
 
     public static void registerAll() {
-        register(new Fullbright().icon(Items.GLOWSTONE));
-        zoom = register(new Zoom().icon(Items.SPYGLASS));
-        crosshair = register(new Crosshair().icon(Items.TARGET));
+        register(new Fullbright());
+        zoom = register(new Zoom());
+        crosshair = register(new Crosshair());
         register(new Simple("minimal_bob", "Minimal view bobbing", "Keeps the camera steady while you walk. Your hand still bobs, so movement doesn't feel stiff.") {
             @Override protected void onEnable() { minimalBob = true; }
             @Override protected void onDisable() { minimalBob = false; }
-        }.icon(Items.SADDLE));
-        register(new Particles().icon(Items.BLAZE_POWDER));
+        });
+        register(new Particles());
         register(new Simple("hide_hand", "Hide hand", "Removes your hand and held item from view. Great for screenshots and building.") {
             @Override protected void onEnable() { hideHand = true; }
             @Override protected void onDisable() { hideHand = false; }
-        }.icon(Items.ITEM_FRAME));
-        register(new Simple("cinematic_key", "Cinematic camera key", "Lets you turn the smooth cinematic camera on and off with a key. Set the key in Controls.").icon(Items.PHANTOM_MEMBRANE));
-        Feature scoreboard = register(new HudHide("hide_scoreboard", "Hide scoreboard", "Hides the sidebar scoreboard on servers.").icon(Items.OAK_SIGN));
-        Feature bossbar = register(new HudHide("hide_bossbar", "Hide boss bars", "Hides boss and event bars at the top of the screen.").icon(Items.DRAGON_HEAD));
-        Feature effects = register(new HudHide("hide_vanilla_effects", "Hide vanilla effect icons", "Hides Minecraft's effect icons in the top right. Use it together with Potion status.").icon(Items.BREWING_STAND));
-        Feature titles = register(new HudHide("hide_titles", "Hide title messages", "Hides the big title text some servers flash on your screen.").icon(Items.NAME_TAG));
-        register(new LowHealth().icon(Items.GLISTERING_MELON_SLICE));
-        register(new DurabilityWarning().icon(Items.ANVIL));
-        register(new Planned("clear_water", "Clear water", Category.VISUAL, "Removes underwater fog so you can see further. Coming in a later update.").icon(Items.WATER_BUCKET));
-        register(new Planned("item_physics", "Item physics", Category.VISUAL, "Dropped items lie flat and tumble instead of spinning. Coming in a later update.").icon(Items.DIAMOND));
-        register(new Planned("block_outline", "Block outline", Category.VISUAL, "Thicker, coloured outline on the block you're looking at. Coming in a later update.").icon(Items.GLASS));
-        register(new Planned("low_fire", "Low fire", Category.VISUAL, "Lowers the burning effect so it doesn't cover your view. Coming in a later update.").icon(Items.FLINT_AND_STEEL));
+        });
+        register(new Simple("cinematic_key", "Cinematic camera key", "Lets you turn the smooth cinematic camera on and off with a key. Set the key in Controls."));
+        Feature scoreboard = register(new HudHide("hide_scoreboard", "Hide scoreboard", "Hides the sidebar scoreboard on servers."));
+        Feature bossbar = register(new HudHide("hide_bossbar", "Hide boss bars", "Hides boss and event bars at the top of the screen."));
+        Feature effects = register(new HudHide("hide_vanilla_effects", "Hide vanilla effect icons", "Hides Minecraft's effect icons in the top right. Use it together with Potion status."));
+        Feature titles = register(new HudHide("hide_titles", "Hide title messages", "Hides the big title text some servers flash on your screen."));
+        register(new LowHealth());
+        register(new DurabilityWarning());
+        register(new Planned("clear_water", "Clear water", Category.VISUAL, "Removes underwater fog so you can see further. Coming in a later update."));
+        register(new Planned("item_physics", "Item physics", Category.VISUAL, "Dropped items lie flat and tumble instead of spinning. Coming in a later update."));
+        register(new Planned("block_outline", "Block outline", Category.VISUAL, "Thicker, coloured outline on the block you're looking at. Coming in a later update."));
+        register(new Planned("low_fire", "Low fire", Category.VISUAL, "Lowers the burning effect so it doesn't cover your view. Coming in a later update."));
 
         // Hide/replace vanilla HUD pieces without mixins.
         Compat.overrideVanilla(VanillaElement.SCOREBOARD, scoreboard::isEnabled, null);
@@ -162,6 +162,8 @@ public final class VisualFeatures {
         public final Setting.Color color, targetColor;
         public final Setting.Slider length, gap, thickness;
         public final Setting.Bool outline, dot, onTarget, expand;
+        public final Setting.Choice attack;
+        public final Setting.Color attackColor;
 
         Crosshair() {
             super("crosshair", "Custom crosshair", "Replace Minecraft's crosshair with your own: pick the shape, colour and size.");
@@ -175,6 +177,10 @@ public final class VisualFeatures {
             onTarget = add(new Setting.Bool("on_target", "Change colour when aiming at a mob", false).adv());
             targetColor = add(new Setting.Color("target_color", "Colour on mobs", HudStyle.DANGER).adv());
             targetColor.showIf(() -> onTarget.v);
+            attack = add(new Setting.Choice("attack_indicator", "Attack cooldown", 0, "Bar", "Ring", "Off")
+                    .help("Replaces Minecraft's sword icon, which the custom crosshair hides. Shown when Options > Video > Attack Indicator is set to Crosshair."));
+            attackColor = add(new Setting.Color("attack_color", "Cooldown colour", 0xFFFFFFFF));
+            attackColor.showIf(() -> attack.v != 2);
             expand = add(new Setting.Bool("expand", "Spread while moving", false).adv().help("The gap widens while you walk, like in shooters."));
         }
 
@@ -234,6 +240,30 @@ public final class VisualFeatures {
                 }
             }
             if (dot.v && style.v != 1) rect(g, cx - h, cy - h, cx - h + t, cy - h + t, c, o);
+            drawCooldown(g, mc, cx, cy, live, gp + len);
+        }
+
+        private void drawCooldown(Gfx g, Minecraft mc, int cx, int cy, boolean live, int reach) {
+            if (attack.v == 2) return;
+            float progress = 0.6f;
+            if (live) {
+                if (mc.player == null || mc.options.attackIndicator().get() != AttackIndicatorStatus.CROSSHAIR) return;
+                progress = mc.player.getAttackStrengthScale(0f);
+                if (progress >= 1f) return;
+            }
+            int col = attackColor.v;
+            if (attack.v == 0) {
+                int y = cy + Math.max(7, reach + 4), w = 16;
+                g.fill(cx - w / 2, y, cx + w / 2, y + 2, 0x90000000);
+                g.fill(cx - w / 2, y, cx - w / 2 + Math.round(w * progress), y + 2, col);
+            } else {
+                int r = Math.max(7, reach + 3);
+                for (int a = 0; a < 360; a += 6) {
+                    double rad = Math.toRadians(a - 90);
+                    int px = cx + (int) Math.round(Math.cos(rad) * r), py = cy + (int) Math.round(Math.sin(rad) * r);
+                    g.fill(px, py, px + 1, py + 1, a < progress * 360 ? col : 0x60000000);
+                }
+            }
         }
     }
 
@@ -339,7 +369,7 @@ public final class VisualFeatures {
             threshold = add(new Setting.Slider("threshold", "Warn below", 1, 25, 1, 5, v -> v + "%"));
         }
 
-        @Override public void finishSettings() { look = HudLook.attach(this, HudStyle.WARN); }
+        @Override public void finishSettings() { look = HudLook.attach(this, HudLook.LABEL, HudStyle.WARN); }
         @Override public HudLook look() { return look; }
         @Override public float[] defaultPos() { return new float[]{0.5f, 0.12f}; }
 

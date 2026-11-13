@@ -149,7 +149,7 @@ public final class HudEditorScreen extends EmberScreen {
         if (dragging != null && guideX) g.fill(width / 2, 0, width / 2 + 1, height, Theme.ACCENT);
         if (dragging != null && guideY) g.fill(0, height / 2, width, height / 2 + 1, Theme.ACCENT);
 
-        if (minecraft.player != null) HudRenderer.drawAll(g, minecraft);
+        if (minecraft.player != null) HudRenderer.drawAll(g, minecraft, true);
 
         List<Feature> list = modules();
         Feature hov = dragging != null ? dragging : under(mouseX, mouseY);

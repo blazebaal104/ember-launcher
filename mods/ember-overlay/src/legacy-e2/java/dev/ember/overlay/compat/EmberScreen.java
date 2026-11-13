@@ -3,6 +3,7 @@ package dev.ember.overlay.compat;
 
 import dev.ember.overlay.api.Gfx;
 import net.minecraft.client.gui.GuiGraphics;
+import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -35,6 +36,11 @@ public abstract class EmberScreen extends Screen {
 
     protected void onMouseRelease(double x, double y, int button) {}
 
+    /** A key press (before vanilla handles it). Return true to swallow it (key capture). */
+    protected boolean onKey(InputConstants.Key key) {
+        return false;
+    }
+
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {
         if (vanillaBackground()) super.renderBackground(g, mouseX, mouseY, delta);
@@ -57,5 +63,11 @@ public abstract class EmberScreen extends Screen {
     public boolean mouseReleased(double x, double y, int button) {
         onMouseRelease(x, y, button);
         return super.mouseReleased(x, y, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (onKey(InputConstants.getKey(keyCode, scanCode))) return true;
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }
 }

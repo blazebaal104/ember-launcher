@@ -9,16 +9,20 @@ The 1.21.x line changed a few APIs between releases; each era flips the relevant
   debug: True = DebugScreenOverlay.showDebugScreen() exists (≤1.21.8)
   pose:  "stack" = PoseStack pushPose/popPose (≤1.21.5), "matrix" = Matrix3x2fStack (1.21.6+)
   input: "old" = mouseClicked(double, double, int) (≤1.21.8), "new" = MouseButtonEvent (1.21.9+)
+  sprite: how effect icons are drawn: "atlas" = MobEffectTextureManager (1.21.1),
+          "rendertype" = blitSprite(RenderType::guiTextured, ...) (1.21.2-1.21.5),
+          "pipeline" = blitSprite(RenderPipelines.GUI_TEXTURED, ...) (1.21.6+)
 Also writes EmberScreen.java (the overlay's screen base class) for each era.
 Run: python3 tools/gen_legacy_compat.py   (CI runs it before building)
 """
 import os
 
 ERAS = {
-    "e1": dict(hud="old", keys="string", ids="resloc", leave="old", debug=True, pose="stack", input="old"),
-    "e2": dict(hud="new", keys="string", ids="resloc", leave="new", debug=True, pose="matrix", input="old"),
-    "e3": dict(hud="new", keys="category", ids="resloc", leave="new", debug=False, pose="matrix", input="new"),
-    "e4": dict(hud="new", keys="category", ids="ident", leave="new", debug=False, pose="matrix", input="new"),
+    "e0": dict(hud="old", keys="string", ids="resloc", leave="old", debug=True, pose="stack", input="old", sprite="atlas"),
+    "e1": dict(hud="old", keys="string", ids="resloc", leave="old", debug=True, pose="stack", input="old", sprite="rendertype"),
+    "e2": dict(hud="new", keys="string", ids="resloc", leave="new", debug=True, pose="matrix", input="old", sprite="pipeline"),
+    "e3": dict(hud="new", keys="category", ids="resloc", leave="new", debug=False, pose="matrix", input="new", sprite="pipeline"),
+    "e4": dict(hud="new", keys="category", ids="ident", leave="new", debug=False, pose="matrix", input="new", sprite="pipeline"),
 }
 
 def render(e):
@@ -105,6 +109,18 @@ def render(e):
     leave = ("if (mc.level != null) {\n            mc.level.disconnect();\n            mc.disconnect();\n        }"
              if e["leave"] == "old" else "if (mc.level != null) mc.disconnectWithProgressScreen();")
     new_id = f"{Id}.fromNamespaceAndPath(MOD_ID, path)"
+    if e["sprite"] == "atlas":
+        sprite = '''    public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
+        g.blit(x, y, 0, 18, 18, Minecraft.getInstance().getMobEffectTextures().get(effect));
+    }'''
+    elif e["sprite"] == "rendertype":
+        sprite = '''    public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
+        g.blitSprite(net.minecraft.client.renderer.RenderType::guiTextured, net.minecraft.client.gui.Gui.getMobEffectSprite(effect), x, y, 18, 18);
+    }'''
+    else:
+        sprite = '''    public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
+        g.blitSprite(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, net.minecraft.client.gui.Gui.getMobEffectSprite(effect), x, y, 18, 18);
+    }'''
     if e["pose"] == "stack":
         pose = '''    public static void pushScale(GuiGraphics g, float x, float y, float s) {
         g.pose().pushPose();
@@ -143,6 +159,7 @@ public final class Compat {{
     public static final int KEY_RSHIFT = InputConstants.KEY_RSHIFT;
     public static final int KEY_C = InputConstants.KEY_C;
     public static final int KEY_LALT = InputConstants.KEY_LALT;
+    public static final int KEY_M = InputConstants.KEY_M;
     private static final GfxImpl HUD_GFX = new GfxImpl();
 
     public static {Id} id(String path) {{
@@ -154,6 +171,8 @@ public final class Compat {{
 {hud}
 
 {pose}
+
+{sprite}
 
     public static void afterScreenDraw(Screen screen, Consumer<Gfx> draw) {{
         GfxImpl gfx = new GfxImpl();
@@ -219,7 +238,7 @@ public final class Compat {{
 
 def screen(e):
     if e["input"] == "old":
-        imp = ""
+        imp = "import com.mojang.blaze3d.platform.InputConstants;\n"
         inp = '''    @Override
     public boolean mouseClicked(double x, double y, int button) {
         if (super.mouseClicked(x, y, button)) return true;
@@ -230,9 +249,15 @@ def screen(e):
     public boolean mouseReleased(double x, double y, int button) {
         onMouseRelease(x, y, button);
         return super.mouseReleased(x, y, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (onKey(InputConstants.getKey(keyCode, scanCode))) return true;
+        return super.keyPressed(keyCode, scanCode, modifiers);
     }'''
     else:
-        imp = "import net.minecraft.client.input.MouseButtonEvent;\n"
+        imp = "import com.mojang.blaze3d.platform.InputConstants;\nimport net.minecraft.client.input.KeyEvent;\nimport net.minecraft.client.input.MouseButtonEvent;\n"
         inp = '''    @Override
     public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
         if (super.mouseClicked(e, doubleClick)) return true;
@@ -243,6 +268,12 @@ def screen(e):
     public boolean mouseReleased(MouseButtonEvent e) {
         onMouseRelease(e.x(), e.y(), e.button());
         return super.mouseReleased(e);
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent e) {
+        if (onKey(InputConstants.getKey(e))) return true;
+        return super.keyPressed(e);
     }'''
     return f'''// GENERATED by tools/gen_legacy_compat.py — edit the generator, not this file.
 package dev.ember.overlay.compat;
@@ -280,6 +311,11 @@ public abstract class EmberScreen extends Screen {{
     }}
 
     protected void onMouseRelease(double x, double y, int button) {{}}
+
+    /** A key press (before vanilla handles it). Return true to swallow it (key capture). */
+    protected boolean onKey(InputConstants.Key key) {{
+        return false;
+    }}
 
     @Override
     public void renderBackground(GuiGraphics g, int mouseX, int mouseY, float delta) {{

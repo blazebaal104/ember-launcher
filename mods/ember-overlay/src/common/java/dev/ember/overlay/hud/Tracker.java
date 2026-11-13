@@ -54,4 +54,9 @@ public final class Tracker implements Gfx {
     @Override public void pop() { g.pop(); }
     @Override public void clip(int x1, int y1, int x2, int y2) { g.clip(x1, y1, x2, y2); }
     @Override public void unclip() { g.unclip(); }
+
+    @Override public void effectIcon(net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
+        g.effectIcon(effect, x, y);
+        grow(x, y, x + 18, y + 18);
+    }
 }

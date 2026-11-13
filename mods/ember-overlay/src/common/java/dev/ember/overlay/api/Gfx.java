@@ -25,4 +25,7 @@ public interface Gfx {
     void clip(int x1, int y1, int x2, int y2);
 
     void unclip();
+
+    /** A potion effect's icon, 18x18 like in the inventory. */
+    void effectIcon(net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y);
 }

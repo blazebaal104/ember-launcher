@@ -2,9 +2,6 @@ package dev.ember.overlay.core;
 
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
-import net.minecraft.world.level.ItemLike;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,8 +20,6 @@ public abstract class Feature {
     public final String description;
     public final List<Setting> settings = new ArrayList<>();
     private boolean enabled;
-    private ItemLike iconItem = Items.PAPER;
-    private ItemStack icon;
     /** Key that drives this feature, shown on its settings page. */
     public KeyMapping key;
     /** Name of an installed mod that already does this (see {@link ModScan}); null if none. */
@@ -77,23 +72,9 @@ public abstract class Feature {
 
     // ---------------------------------------------------------------- menu metadata
 
-    @SuppressWarnings("unchecked")
-    public <F extends Feature> F icon(ItemLike item) {
-        iconItem = item;
-        icon = null;
-        return (F) this;
-    }
-
-    /** The card icon; null while the game is still loading (items aren't ready yet on 26.x). */
-    public ItemStack icon() {
-        if (icon == null) {
-            try {
-                icon = new ItemStack(iconItem);
-            } catch (RuntimeException notReady) {
-                return null;
-            }
-        }
-        return icon;
+    /** Icon name in {@link dev.ember.overlay.ui.Icons} (same as the feature id). */
+    public String iconId() {
+        return id;
     }
 
     /** Called once when registered, after the constructor has added the feature's own settings. */
