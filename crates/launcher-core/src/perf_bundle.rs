@@ -299,7 +299,7 @@ async fn install_overlay(ctx: &HookContext, cfg: &InstanceConfig, report: &mut H
         report.skipped.push("ember-overlay - only available for Fabric/Quilt".into());
         return Ok(());
     }
-    match ensure_overlay(&ctx.paths.bundled_resources(), &ctx.instance_dir, cfg).await? {
+    match ensure_overlay(&ctx.paths.bundled_resources(), &ctx.instance_dir, cfg, None).await? {
         OverlayState::Installed | OverlayState::Current => report.installed.push("ember-overlay (in-game menu: Right Shift)".into()),
         OverlayState::NoBuild => report.skipped.push(format!("ember-overlay - no build for {} in this launcher release", cfg.game_version)),
         OverlayState::Off => {}
@@ -333,7 +333,9 @@ pub fn overlay_jar_for(resources: &std::path::Path, game_version: &str) -> Optio
 
 /// Make the instance's overlay match this launcher's build (installs it into existing
 /// instances, updates it after an Ember update, removes it when switched off).
-pub async fn ensure_overlay(resources: &std::path::Path, instance_dir: &std::path::Path, cfg: &InstanceConfig) -> Result<OverlayState> {
+/// `newer` is a jar downloaded from the separately published menu (see overlay_remote); it
+/// wins over the copy bundled with the app.
+pub async fn ensure_overlay(resources: &std::path::Path, instance_dir: &std::path::Path, cfg: &InstanceConfig, newer: Option<std::path::PathBuf>) -> Result<OverlayState> {
     let dest = instance_dir.join("mods").join("ember-overlay.jar");
     if !cfg.overlay || !matches!(cfg.loader, Loader::Fabric | Loader::Quilt) {
         if !cfg.overlay && tokio::fs::metadata(&dest).await.is_ok() {
@@ -341,7 +343,7 @@ pub async fn ensure_overlay(resources: &std::path::Path, instance_dir: &std::pat
         }
         return Ok(OverlayState::Off);
     }
-    let Some(src) = overlay_jar_for(resources, &cfg.game_version) else {
+    let Some(src) = newer.or_else(|| overlay_jar_for(resources, &cfg.game_version)) else {
         // No build for this version: don't leave a jar from another version behind.
         let _ = tokio::fs::remove_file(&dest).await;
         return Ok(OverlayState::NoBuild);
@@ -375,12 +377,12 @@ mod overlay_tests {
             "performanceBundle": false, "overlay": true, "createdAt": "2026-01-01T00:00:00Z", "lastPlayed": null
         })).unwrap();
         cfg.overlay = true;
-        assert_eq!(ensure_overlay(res.path(), inst.path(), &cfg).await.unwrap(), OverlayState::Installed);
-        assert_eq!(ensure_overlay(res.path(), inst.path(), &cfg).await.unwrap(), OverlayState::Current);
+        assert_eq!(ensure_overlay(res.path(), inst.path(), &cfg, None).await.unwrap(), OverlayState::Installed);
+        assert_eq!(ensure_overlay(res.path(), inst.path(), &cfg, None).await.unwrap(), OverlayState::Current);
         std::fs::write(o.join("ember-overlay-1.21.8.jar"), b"v2").unwrap();
-        assert_eq!(ensure_overlay(res.path(), inst.path(), &cfg).await.unwrap(), OverlayState::Installed);
+        assert_eq!(ensure_overlay(res.path(), inst.path(), &cfg, None).await.unwrap(), OverlayState::Installed);
         cfg.overlay = false;
-        assert_eq!(ensure_overlay(res.path(), inst.path(), &cfg).await.unwrap(), OverlayState::Off);
+        assert_eq!(ensure_overlay(res.path(), inst.path(), &cfg, None).await.unwrap(), OverlayState::Off);
         assert!(!inst.path().join("mods/ember-overlay.jar").exists());
     }
 }

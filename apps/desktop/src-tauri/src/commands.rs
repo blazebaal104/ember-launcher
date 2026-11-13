@@ -292,7 +292,14 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
         Err(e) => tracing::warn!(error = %e, "could not check essential mods (offline?)"),
     }
     // In-game menu: install into older instances, update after an Ember update, honour the toggle.
-    match launcher_core::perf_bundle::ensure_overlay(&state.paths.bundled_resources(), &state.paths.instance(&inst.id), &inst).await {
+    // Prefer the separately published menu (updates without an app update); falls back to
+    // the copy bundled with the app when offline or when no build is published.
+    let newer = if inst.overlay {
+        launcher_core::overlay_remote::jar_for(&state.client, &state.paths.root().join("overlay-cache"), &inst.game_version).await
+    } else {
+        None
+    };
+    match launcher_core::perf_bundle::ensure_overlay(&state.paths.bundled_resources(), &state.paths.instance(&inst.id), &inst, newer).await {
         Ok(s) => tracing::info!(state = ?s, "ember overlay"),
         Err(e) => tracing::warn!(error = %e, "could not update the in-game menu"),
     }

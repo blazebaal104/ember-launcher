@@ -5,12 +5,20 @@ name: Overlay mod
 # headless game to check every mixin applies. Jars are cached by a hash of the mod's sources,
 # so unchanged versions finish in seconds.
 #
-# Used by build-windows.yml, and runs on its own for pushes to overlay-dev branches.
+# Pushes to main that touch the mod publish the tested jars to the "overlay" release, which
+# Ember downloads at launch: menu fixes reach players in minutes, without an app update.
+# Also used by build-windows.yml (to bundle an offline copy) and runs on overlay-dev branches
+# as a test build (no publishing).
 
 on:
   workflow_call:
+    inputs:
+      publish:
+        type: boolean
+        default: false
   push:
-    branches: ["overlay-dev", "overlay-dev/**", "overlay-dev-*"]
+    branches: ["main", "overlay-dev", "overlay-dev/**", "overlay-dev-*"]
+    paths: ["mods/ember-overlay/**", ".github/workflows/overlay.yml"]
   workflow_dispatch:
 
 permissions:
@@ -41,13 +49,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Only rebuild when the mod's sources (or this workflow) changed.
+      # Which source folders build this version: shared code + its family (legacy/modern) + its era.
+      - name: Sources for this version
+        id: src
+        run: |
+          if [[ "$ERA" == modern* ]]; then echo "family=modern" >> "$GITHUB_OUTPUT"; echo "era=$ERA" >> "$GITHUB_OUTPUT";
+          else echo "family=legacy" >> "$GITHUB_OUTPUT"; echo "era=legacy-$ERA" >> "$GITHUB_OUTPUT"; fi
+
+      # Only rebuild a version when code that goes into IT changed. Bump "t1" to force a
+      # rebuild (for example after changing the self-test below).
       - name: Cached jar
         id: cache
         uses: actions/cache@v4
         with:
           path: overlay-out
-          key: overlay-${{ matrix.v.mc }}-${{ hashFiles('mods/ember-overlay/**', '.github/workflows/overlay.yml') }}
+          key: overlay-t1-${{ matrix.v.mc }}-${{ hashFiles('mods/ember-overlay/src/common/**', format('mods/ember-overlay/src/{0}/**', steps.src.outputs.family), format('mods/ember-overlay/src/{0}/**', steps.src.outputs.era), 'mods/ember-overlay/*.gradle', 'mods/ember-overlay/gradle.properties', 'mods/ember-overlay/legacy/**', 'mods/ember-overlay/tools/**') }}
 
       - name: Pick project and versions
         if: steps.cache.outputs.cache-hit != 'true'
@@ -63,6 +79,16 @@ jobs:
           if [ "$FIRST" = "$LAST" ]; then RANGE="$FIRST"; else RANGE=">=$FIRST <=$LAST"; fi
           echo "fapi=$FAPI" >> "$GITHUB_OUTPUT"; echo "loader=$LOADER" >> "$GITHUB_OUTPUT"; echo "range=$RANGE" >> "$GITHUB_OUTPUT"
           echo "Minecraft $MC ($ERA): Fabric API $FAPI, loader $LOADER, range '$RANGE'" | tee overlay-$MC-build.log
+
+      # Minecraft itself, already unpacked and remapped by Loom (1-2 minutes per version otherwise).
+      - name: Cached Minecraft
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.cfg.outputs.dir }}/.gradle/loom-cache
+            ~/.gradle/caches/fabric-loom
+          key: loom-${{ matrix.v.mc }}-${{ hashFiles('mods/ember-overlay/build.gradle', 'mods/ember-overlay/settings.gradle', 'mods/ember-overlay/legacy/*.gradle') }}
 
       - uses: actions/setup-java@v4
         if: steps.cache.outputs.cache-hit != 'true'
@@ -128,3 +154,48 @@ jobs:
           cd logs && git init -q && git checkout -q -b "ci-logs/overlay-${{ github.run_number }}-$MC"
           git -c user.name=ci -c user.email=ci@localhost add -A && git -c user.name=ci -c user.email=ci@localhost commit -qm "logs" || true
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" "ci-logs/overlay-${{ github.run_number }}-$MC" || true
+
+  # Main only: publish the jars that passed to the "overlay" release + a manifest with checksums.
+  # Versions that failed keep their previous published jar.
+  publish:
+    needs: [plan, build]
+    if: ${{ !cancelled() && github.ref == 'refs/heads/main' && (github.event_name == 'push' && github.workflow == 'Overlay mod' || inputs.publish) }}
+    runs-on: ubuntu-latest
+    concurrency: overlay-publish
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: overlay-*
+          merge-multiple: true
+          path: overlay-out
+      - name: Publish
+        run: |
+          shopt -s nullglob
+          jars=(overlay-out/*.jar)
+          if [ ${#jars[@]} -eq 0 ]; then echo "No version passed; nothing to publish."; exit 1; fi
+          gh release view overlay >/dev/null 2>&1 || gh release create overlay --prerelease --latest=false \
+            --title "In-game menu (updates automatically)" \
+            --notes "Ember downloads the in-game menu from here when you press Play. You don't need to download anything from this page."
+          gh release download overlay -p overlay-manifest.json -O old.json 2>/dev/null || echo '{"format":1,"builds":[]}' > old.json
+          python3 - <<'PY'
+          import hashlib, json, os
+          old = {b["mc"]: b for b in json.load(open("old.json")).get("builds", [])}
+          builds = []
+          for v in json.load(open("mods/ember-overlay/versions.json")):
+              f = f"ember-overlay-{v['mc']}.jar"
+              p = os.path.join("overlay-out", f)
+              if os.path.exists(p):
+                  builds.append({"mc": v["mc"], "covers": v["covers"], "file": f, "sha256": hashlib.sha256(open(p, "rb").read()).hexdigest()})
+                  print("publish", v["mc"])
+              elif v["mc"] in old:
+                  builds.append(old[v["mc"]])
+                  print("keep previous", v["mc"])
+          json.dump({"format": 1, "builds": builds}, open("overlay-manifest.json", "w"), indent=1)
+          PY
+          # Jars first, manifest last, so players never see a manifest pointing at a missing jar.
+          gh release upload overlay overlay-out/*.jar --clobber
+          gh release upload overlay overlay-manifest.json --clobber
