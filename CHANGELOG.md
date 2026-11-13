@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0
+
+### A real Account page
+- **New Account page** (click your name at the bottom of the sidebar), replacing the old sign-in setup in Settings.
+- **3D preview of your skin** as other players see it, with your name tag: drag to turn, scroll to zoom, and pick a pose (stand, walk, run, wave, sneak). Shows your cape, or try it as an elytra.
+- **Skins**: drop in a PNG and preview it in 3D before wearing it, pick classic or slim arms, go back to the default skin. Every skin you use is kept in a **skin library** so you can switch back any time.
+- **Capes**: pick which of your capes to wear, or hide it.
+- **Change your name**, with a live "available / taken" check and when your next change is allowed.
+- **Stats**: time played, favourite version, most played instance, sessions, and a chart of the last two weeks.
+- **Server history**: servers you joined, when, and from which instance, with one-click Play.
+- **Multiplayer status**: whether you can join servers, Realms and chat, and any active ban.
+- **Several accounts**: add more Microsoft accounts and switch between them from the Account page or the arrows next to your name in the sidebar. Your existing sign-in carries over automatically.
+
 ## 0.6.0
 
 ### A brand-new in-game menu

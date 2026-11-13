@@ -35,12 +35,28 @@ export function SignIn({ onDone, label = "Sign in with Microsoft", compact }: { 
   if (code) {
     return (
       <div className="rounded-card border border-slate-line bg-slate-surface/80 p-4" aria-live="polite">
-        <p className="text-[13px] text-muted">On the Microsoft page, paste this code{copied ? " (it's already copied)" : ""}, then choose your account:</p>
-        <div className="mt-2 flex items-center justify-between gap-3">
-          <span className="font-pixel text-[26px] tracking-[0.15em] text-text">{code.user_code}</span>
-          <button type="button" aria-label="Copy code" onClick={() => navigator.clipboard?.writeText(code.user_code).then(() => setCopied(true))} className="rounded-chip p-2 text-muted hover:bg-slate-raised hover:text-text">
-            {copied ? <Check className="size-4 text-copper" /> : <Copy className="size-4" />}
-          </button>
+        <p className="text-[13px] text-muted">On the Microsoft page, paste this code (Ctrl+V){copied ? ": it's already copied" : ""}, then choose your account.</p>
+        <div className="mt-2 flex items-center gap-2">
+          {/* Plain monospace, split in two groups: no guessing between O/0 or I/1. */}
+          <span
+            className="flex-1 select-all rounded-card bg-slate-raised px-3 py-2 text-center font-mono text-[24px] font-semibold tracking-[0.18em] text-text"
+            style={{ fontFamily: 'ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace', fontVariantLigatures: "none" }}
+            aria-label={`Sign-in code ${code.user_code.split("").join(" ")}`}
+          >
+            {/* the gap is spacing, not a character, so selecting and copying it by hand still works */}
+            {code.user_code.length === 8 ? (
+              <>
+                {code.user_code.slice(0, 4)}
+                <span className="inline-block w-3" />
+                {code.user_code.slice(4)}
+              </>
+            ) : (
+              code.user_code
+            )}
+          </span>
+          <Button size="sm" variant={copied ? "secondary" : "primary"} icon={copied ? Check : Copy} onClick={() => navigator.clipboard?.writeText(code.user_code).then(() => setCopied(true))}>
+            {copied ? "Copied" : "Copy"}
+          </Button>
         </div>
         <div className="mt-3 flex items-center justify-between">
           <button type="button" onClick={() => open(code.verification_uri)} className="flex items-center gap-1.5 text-[13px] text-copper hover:underline">
