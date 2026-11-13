@@ -221,8 +221,10 @@ public final class OverlayScreen extends EmberScreen {
 
     private void item(Gfx g, Feature f, int x, int y, float scale) {
         if (fade < 0.6f) return;
+        var stack = f.icon();
+        if (stack == null) return;
         g.push(x, y, scale);
-        g.item(f.icon(), 0, 0);
+        g.item(stack, 0, 0);
         g.pop();
     }
 

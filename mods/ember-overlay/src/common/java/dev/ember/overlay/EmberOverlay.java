@@ -121,7 +121,8 @@ public final class EmberOverlay implements ClientModInitializer {
     }
 
     private void tick(Minecraft mc) {
-        if (SELFTEST) selftest(mc, ++selftestTicks);
+        // Count only once the loading screen is gone, like a real player opening the menu in game.
+        if (SELFTEST && mc.getOverlay() == null) selftest(mc, ++selftestTicks);
         // Features that asked for ticks (only the enabled ones are in this list).
         List<Feature> ticking = FeatureRegistry.ticking();
         for (int i = 0, n = ticking.size(); i < n; i++) ticking.get(i).tick(mc);

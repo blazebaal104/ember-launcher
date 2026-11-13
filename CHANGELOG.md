@@ -9,6 +9,8 @@
 - **Live previews** on the settings page for HUD modules and the crosshair.
 - **Edit HUD layout**: drag HUD modules anywhere, scroll to resize them, right-click to reset. They snap to the edges and the centre of the screen.
 - **Nothing is turned on by default** any more. Pick what you want.
+- **Menu updates without app updates**: Ember now downloads the newest in-game menu when you press Play (checked for integrity, and it keeps working offline), so menu fixes reach you within minutes.
+- The in-game menu works on **26.1 to 26.3** too.
 - **"You already have it"**: Ember checks your mods, and when one already does the same thing (for example an armor HUD, Zoomify, AppleSkin, Jade or a minimap) the card says so, so you don't end up with two of the same thing.
 
 ## 0.5.0

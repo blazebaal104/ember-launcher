@@ -84,8 +84,15 @@ public abstract class Feature {
         return (F) this;
     }
 
+    /** The card icon; null while the game is still loading (items aren't ready yet on 26.x). */
     public ItemStack icon() {
-        if (icon == null) icon = new ItemStack(iconItem);
+        if (icon == null) {
+            try {
+                icon = new ItemStack(iconItem);
+            } catch (RuntimeException notReady) {
+                return null;
+            }
+        }
         return icon;
     }
 
