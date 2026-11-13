@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.6.0
+
+### A brand-new in-game menu
+- **Redesigned from scratch** (Right Shift): a glass panel in Ember's colours (it follows the theme and accent you picked in the app), with a card for every feature, filters on the side (All, Enabled, HUD, Visual, Utility) and search.
+- **Click the bottom of a card** to turn a feature on or off. **Click the rest of the card** to open its settings page, with a simple description, the most useful options first, and an **Advanced settings** section for the rest.
+- **Real options for every feature**: crosshair style, colour, size, gap and outline (plus a colour change when aiming at mobs); zoom amount and smoothness; FPS and ping coloured by value; coordinates layout and Nether/Overworld position; armor layout and durability as number, percent or bar; mini-map size, range and shape; and more. Every HUD module also has colour, background, opacity, size, shadow and padding options.
+- **Live previews** on the settings page for HUD modules and the crosshair.
+- **Edit HUD layout**: drag HUD modules anywhere, scroll to resize them, right-click to reset. They snap to the edges and the centre of the screen.
+- **Nothing is turned on by default** any more. Pick what you want.
+- **"You already have it"**: Ember checks your mods, and when one already does the same thing (for example an armor HUD, Zoomify, AppleSkin, Jade or a minimap) the card says so, so you don't end up with two of the same thing.
+
 ## 0.5.0
 
 ### The in-game menu works on many more versions
