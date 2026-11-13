@@ -1,0 +1,38 @@
+jar: /home/runner/.gradle/caches/fabric-loom/minecraftMaven/net/minecraft/minecraft-merged/1.21.11-loom.mappings.1_21_11.layered+hash.2198-v2/minecraft-merged-1.21.11-loom.mappings.1_21_11.layered+hash.2198-v2.jar
+===== net.minecraft.client.renderer.texture.DynamicTexture
+public class net.minecraft.client.renderer.texture.DynamicTexture extends net.minecraft.client.renderer.texture.AbstractTexture implements net.minecraft.client.renderer.texture.Dumpable {
+  public net.minecraft.client.renderer.texture.DynamicTexture(java.util.function.Supplier<java.lang.String>, com.mojang.blaze3d.platform.NativeImage);
+  public net.minecraft.client.renderer.texture.DynamicTexture(java.lang.String, int, int, boolean);
+  public net.minecraft.client.renderer.texture.DynamicTexture(java.util.function.Supplier<java.lang.String>, int, int, boolean);
+  public void upload();
+  public com.mojang.blaze3d.platform.NativeImage getPixels();
+  public void setPixels(com.mojang.blaze3d.platform.NativeImage);
+  public void close();
+===== com.mojang.blaze3d.platform.NativeImage
+public final class com.mojang.blaze3d.platform.NativeImage implements java.lang.AutoCloseable {
+  public void close();
+  public void setPixelABGR(int, int, int);
+  public void setPixel(int, int, int);
+  public int[] getPixelsABGR();
+  public int[] getPixels();
+===== net.minecraft.client.renderer.texture.TextureManager
+public class net.minecraft.client.renderer.texture.TextureManager implements net.minecraft.server.packs.resources.PreparableReloadListener,java.lang.AutoCloseable {
+  public static final net.minecraft.resources.Identifier INTENTIONAL_MISSING_TEXTURE;
+  public void register(net.minecraft.resources.Identifier, net.minecraft.client.renderer.texture.AbstractTexture);
+  public void release(net.minecraft.resources.Identifier);
+  public void close();
+===== net.minecraft.client.renderer.texture.AbstractTexture
+public abstract class net.minecraft.client.renderer.texture.AbstractTexture implements java.lang.AutoCloseable {
+  public void close();
+===== net.minecraft.client.gui.GuiGraphics
+public class net.minecraft.client.gui.GuiGraphics {
+  public void blit(com.mojang.blaze3d.pipeline.RenderPipeline, net.minecraft.resources.Identifier, int, int, float, float, int, int, int, int, int);
+  public void blit(com.mojang.blaze3d.pipeline.RenderPipeline, net.minecraft.resources.Identifier, int, int, float, float, int, int, int, int);
+  public void blit(com.mojang.blaze3d.pipeline.RenderPipeline, net.minecraft.resources.Identifier, int, int, float, float, int, int, int, int, int, int);
+  public void blit(com.mojang.blaze3d.pipeline.RenderPipeline, net.minecraft.resources.Identifier, int, int, float, float, int, int, int, int, int, int, int);
+  public void blit(net.minecraft.resources.Identifier, int, int, int, int, float, float, float, float);
+===== net.minecraft.client.gui.GuiGraphicsExtractor
+Error: class not found: net.minecraft.client.gui.GuiGraphicsExtractor
+===== net.minecraft.client.Minecraft
+public class net.minecraft.client.Minecraft extends net.minecraft.util.thread.ReentrantBlockableEventLoop<java.lang.Runnable> implements com.mojang.blaze3d.platform.WindowEventHandler {
+  public void close();
