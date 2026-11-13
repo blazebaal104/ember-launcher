@@ -10,7 +10,7 @@ name: Overlay mod
 on:
   workflow_call:
   push:
-    branches: ["overlay-dev", "overlay-dev/**"]
+    branches: ["overlay-dev", "overlay-dev/**", "overlay-dev-*"]
   workflow_dispatch:
 
 permissions:
@@ -95,11 +95,24 @@ jobs:
         timeout-minutes: 15
         working-directory: ${{ steps.cfg.outputs.dir }}
         run: |
-          sudo apt-get update -q && sudo apt-get install -yq xvfb mesa-utils libgl1-mesa-dri mesa-vulkan-drivers > /dev/null
+          sudo apt-get update -q && sudo apt-get install -yq xvfb mesa-utils libgl1-mesa-dri mesa-vulkan-drivers imagemagick > /dev/null
           export LIBGL_ALWAYS_SOFTWARE=1
           ARGS="-Pminecraft_version=$MC -Pfabric_api_version=${{ steps.cfg.outputs.fapi }} -Ploader_version=${{ steps.cfg.outputs.loader }} -Pera=$ERA"
-          timeout 600 xvfb-run -a -s "-screen 0 1280x720x24" gradle runClient $ARGS "-Pmc_range=${{ steps.cfg.outputs.range }}" -Pselftest --stacktrace 2>&1 | tee "$GITHUB_WORKSPACE/overlay-$MC-selftest.log" || true
-          if grep -q "EMBER_SELFTEST_OK" "$GITHUB_WORKSPACE/overlay-$MC-selftest.log"; then echo "SELFTEST PASSED"; else echo "SELFTEST FAILED"; exit 1; fi
+          LOG="$GITHUB_WORKSPACE/overlay-$MC-selftest.log"; : > "$LOG"
+          Xvfb :99 -screen 0 1280x720x24 > /dev/null 2>&1 &
+          export DISPLAY=:99
+          # The game prints "EMBER_SHOT <page>" while each menu page is open; screenshot it.
+          ( tail -F "$LOG" 2>/dev/null | while read -r line; do
+              case "$line" in *EMBER_SHOT*)
+                n=$(echo "$line" | sed 's/.*EMBER_SHOT //' | tr -cd 'a-z')
+                import -window root "$GITHUB_WORKSPACE/shot-$MC-$n.png" || true;;
+              esac
+            done ) &
+          WATCH=$!
+          timeout 600 gradle runClient $ARGS "-Pmc_range=${{ steps.cfg.outputs.range }}" -Pselftest --stacktrace >> "$LOG" 2>&1 || true
+          sleep 1; kill $WATCH 2>/dev/null || true; pkill -f "tail -F" || true
+          tail -n 40 "$LOG"
+          if grep -q "EMBER_SELFTEST_OK" "$LOG" && grep -q "EMBER_SELFTEST_UI_OK" "$LOG"; then echo "SELFTEST PASSED"; else echo "SELFTEST FAILED"; exit 1; fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -110,6 +123,7 @@ jobs:
         if: always() && steps.cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p logs && cp overlay-*.log logs/ 2>/dev/null || true
+          cp shot-*.png logs/ 2>/dev/null || true
           echo "${{ job.status }}" > logs/STATUS
           cd logs && git init -q && git checkout -q -b "ci-logs/overlay-${{ github.run_number }}-$MC"
           git -c user.name=ci -c user.email=ci@localhost add -A && git -c user.name=ci -c user.email=ci@localhost commit -qm "logs" || true

@@ -22,9 +22,10 @@ abstract class EntityTurnMixin {
         if (QolFeatures.Freelook.active) {
             QolFeatures.Freelook.turn(yRot, xRot);
             ci.cancel();
-        } else if (VisualFeatures.isZooming() && !ember$rescaling) {
+        } else if (VisualFeatures.isZooming() && VisualFeatures.zoomSensitivity() < 1 && !ember$rescaling) {
             ember$rescaling = true;
-            ((Entity) (Object) this).turn(yRot * 0.3, xRot * 0.3);
+            double k = VisualFeatures.zoomSensitivity();
+            ((Entity) (Object) this).turn(yRot * k, xRot * k);
             ember$rescaling = false;
             ci.cancel();
         }

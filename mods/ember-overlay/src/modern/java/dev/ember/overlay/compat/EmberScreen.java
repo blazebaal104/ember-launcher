@@ -3,21 +3,59 @@ package dev.ember.overlay.compat;
 import dev.ember.overlay.api.Gfx;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
-/** Base for the overlay's screens: lets shared code draw extras without version-specific render signatures. */
+/**
+ * Base for the overlay's screens (26.x edition). Shared code draws through {@link Gfx} and
+ * gets clicks as plain (x, y, button), so it never touches version-specific signatures.
+ */
 public abstract class EmberScreen extends Screen {
-    private final GfxImpl gfx = new GfxImpl();
+    private final GfxImpl back = new GfxImpl(), front = new GfxImpl();
 
     protected EmberScreen(Component title) {
         super(title);
     }
 
-    protected void drawExtra(Gfx g) {}
+    /** Drawn after the blurred background, under the vanilla widgets (text fields). */
+    protected void drawBackdrop(Gfx g, int mouseX, int mouseY) {}
+
+    /** Drawn over everything (tooltips). */
+    protected void drawExtra(Gfx g, int mouseX, int mouseY) {}
+
+    /** False to skip the vanilla blur/dim (the HUD editor shows the game as it is). */
+    protected boolean vanillaBackground() {
+        return true;
+    }
+
+    /** A click that no vanilla widget took. Return true if handled. */
+    protected boolean onMousePress(double x, double y, int button) {
+        return false;
+    }
+
+    protected void onMouseRelease(double x, double y, int button) {}
+
+    @Override
+    public void extractBackground(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
+        if (vanillaBackground()) super.extractBackground(g, mouseX, mouseY, delta);
+        drawBackdrop(back.wrap(g), mouseX, mouseY);
+    }
 
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         super.extractRenderState(g, mouseX, mouseY, delta);
-        drawExtra(gfx.wrap(g));
+        drawExtra(front.wrap(g), mouseX, mouseY);
+    }
+
+    @Override
+    public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
+        if (super.mouseClicked(e, doubleClick)) return true;
+        return onMousePress(e.x(), e.y(), e.button());
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent e) {
+        onMouseRelease(e.x(), e.y(), e.button());
+        return super.mouseReleased(e);
     }
 }

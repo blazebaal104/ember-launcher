@@ -2,8 +2,8 @@ package dev.ember.overlay.features;
 
 import dev.ember.overlay.compat.Compat;
 import dev.ember.overlay.core.Category;
-import dev.ember.overlay.core.Config;
 import dev.ember.overlay.core.Feature;
+import dev.ember.overlay.core.Setting;
 import dev.ember.overlay.mixin.AbstractContainerScreenAccessor;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.minecraft.client.CameraType;
@@ -17,51 +17,56 @@ import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.Mth;
 import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.Items;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import java.util.regex.Pattern;
 
 import static dev.ember.overlay.core.FeatureRegistry.register;
 
-/** Quality of life: 14 entries, all implemented. */
+/** Utility: handy tools and shortcuts. */
 public final class QolFeatures {
     private QolFeatures() {}
 
-    public static Feature macros, serverSwitcher, snapLook, screenshots, memoryCleaner, copyCoords, chatFilter;
+    public static Feature serverSwitcher, snapLook, screenshots, memoryCleaner, copyCoords;
+    public static Macros macros;
+    public static ChatFilter chatFilter;
     public static ServerData lastServer;
 
     public static void registerAll() {
-        macros = register(new Simple("macros", "Chat macros", "Three keys that send your saved messages or commands (edit them in config/ember-overlay.json).", true));
-        serverSwitcher = register(new Simple("server_switcher", "Quick server switcher", "Press a key to jump to any server in your list.", true));
-        register(new Freelook());
-        snapLook = register(new Simple("snap_look", "Snap look", "Turn 180° instantly with one key.", false));
-        chatFilter = register(new Simple("chat_filter", "Chat filter", "Hides messages matching your filter list (config/ember-overlay.json).", false));
-        register(new InventorySearch());
-        screenshots = register(new Simple("screenshot_manager", "Screenshot manager", "Browse and open this instance's screenshots in-game.", true));
-        memoryCleaner = register(new Simple("memory_cleaner", "Memory cleaner", "Asks Java to free unused memory now. Helps after long sessions; it won't add FPS.", true));
-        register(new ToggleKey("toggle_sprint", "Toggle sprint", "Tap sprint once to keep sprinting.", true));
-        register(new ToggleKey("toggle_sneak", "Toggle sneak", "Tap sneak once to keep sneaking.", false));
-        register(new DeathCoords());
-        register(new AutoReconnect());
-        copyCoords = register(new Simple("copy_coords", "Copy coordinates", "Key that copies your X Y Z to the clipboard.", true));
-        register(new Simple("server_memory", "Remember last server", "Tracks your last server so reconnect works after a kick.", true) {
+        macros = register(new Macros().icon(Items.WRITABLE_BOOK));
+        serverSwitcher = register(new Simple("server_switcher", "Quick server switcher", "Press a key to jump to any server in your list without going back to the title screen.").icon(Items.ENDER_PEARL));
+        register(new Freelook().icon(Items.ENDER_EYE));
+        snapLook = register(new Simple("snap_look", "Snap look", "Turn around 180° instantly with one key.").icon(Items.RECOVERY_COMPASS));
+        chatFilter = register(new ChatFilter().icon(Items.HOPPER));
+        register(new InventorySearch().icon(Items.CHEST));
+        screenshots = register(new Simple("screenshot_manager", "Screenshot manager", "Browse and open this instance's screenshots without leaving the game.").icon(Items.PAINTING));
+        memoryCleaner = register(new Simple("memory_cleaner", "Memory cleaner", "A key that frees unused memory. Helps after long sessions; it won't add FPS.").icon(Items.BUCKET));
+        register(new ToggleKey("toggle_sprint", "Toggle sprint", "Tap sprint once to keep sprinting, instead of holding it.").icon(Items.LEATHER_BOOTS));
+        register(new ToggleKey("toggle_sneak", "Toggle sneak", "Tap sneak once to keep sneaking, instead of holding it.").icon(Items.IRON_BOOTS));
+        register(new DeathCoords().icon(Items.SKELETON_SKULL));
+        register(new AutoReconnect().icon(Items.LEAD));
+        copyCoords = register(new Simple("copy_coords", "Copy coordinates", "A key that copies your X Y Z, ready to paste in chat or Discord.").icon(Items.PAPER));
+        register(new Simple("server_memory", "Remember last server", "Remembers the server you were on, so the Reconnect button works after a kick.") {
             @Override public boolean wantsTick() { return true; }
             @Override public void tick(Minecraft mc) { if (mc.getCurrentServer() != null) lastServer = mc.getCurrentServer(); }
-        });
+        }.icon(Items.LODESTONE));
     }
 
     static class Simple extends Feature {
-        Simple(String id, String name, String description, boolean def) {
-            super(id, name, Category.QOL, description, def);
+        Simple(String id, String name, String description) {
+            super(id, name, Category.QOL, description);
         }
     }
 
     // ------------------------------------------------------------------ helpers used by key handlers
 
     public static void sendMacro(Minecraft mc, int index) {
-        if (!macros.isEnabled() || mc.player == null || index >= Config.macros.size()) return;
-        String text = Config.macros.get(index);
-        if (text.isBlank()) return;
+        if (!macros.isEnabled() || mc.player == null || index >= macros.slots.length) return;
+        String text = macros.slots[index].v.trim();
+        if (text.isEmpty()) return;
         if (text.startsWith("/")) mc.player.connection.sendCommand(text.substring(1));
         else mc.player.connection.sendChat(text);
     }
@@ -86,31 +91,77 @@ public final class QolFeatures {
         Compat.say(mc, ("[Ember] Copied " + c));
     }
 
-    /** Called from ChatComponentMixin. */
+    /** Called from the chat mixin. */
     public static boolean shouldHide(Component message) {
         if (!chatFilter.isEnabled()) return false;
         String text = message.getString();
-        for (Pattern p : Config.chatFilters()) if (p.matcher(text).find()) return true;
+        for (Pattern p : chatFilter.compiled) if (p.matcher(text).find()) return true;
         return false;
     }
 
     // ------------------------------------------------------------------ feature classes
 
-    /** Hold a key to look around in third person while you keep moving straight. */
+    public static final class Macros extends Simple {
+        public final Setting.Text[] slots = new Setting.Text[3];
+
+        Macros() {
+            super("macros", "Chat macros", "Three keys that send a message or command for you. Set the keys in Controls.");
+            String[] defs = {"/home", "gg", "/spawn"};
+            for (int i = 0; i < slots.length; i++) {
+                slots[i] = add(new Setting.Text("macro" + (i + 1), "Macro " + (i + 1), defs[i], "Message, or /command"));
+            }
+        }
+    }
+
+    public static final class ChatFilter extends Simple {
+        final Setting.Text[] rules = new Setting.Text[4];
+        volatile List<Pattern> compiled = List.of();
+
+        ChatFilter() {
+            super("chat_filter", "Chat filter", "Hides chat messages that contain words you choose, like ads or spam.");
+            String[] defs = {"discord.gg/", "free rank", "", ""};
+            for (int i = 0; i < rules.length; i++) {
+                rules[i] = add(new Setting.Text("rule" + (i + 1), "Hide messages with", defs[i], "word or phrase").onChange(this::compile));
+            }
+            compile();
+        }
+
+        void compile() {
+            List<Pattern> out = new ArrayList<>();
+            for (Setting.Text r : rules) {
+                if (r == null || r.v.isBlank()) continue;
+                out.add(Pattern.compile(Pattern.quote(r.v.trim()), Pattern.CASE_INSENSITIVE));
+            }
+            compiled = List.copyOf(out);
+        }
+    }
+
+    /** Hold (or tap) a key to look around in third person while you keep moving straight. */
     public static final class Freelook extends Feature {
         public static volatile boolean active;
         public static float yaw, pitch;
         private static CameraType previous;
+        private static boolean wasHeld;
         public static Freelook instance;
+        final Setting.Choice mode;
+        final Setting.Bool invert;
 
         Freelook() {
-            super("freelook", "Free look", Category.QOL, "Hold Left Alt to look around without changing direction.", true);
+            super("freelook", "Free look", Category.QOL, "Hold the free look key (Left Alt) to look around you without changing where you walk.");
+            mode = add(new Setting.Choice("mode", "Key mode", 0, "Hold", "Toggle"));
+            invert = add(new Setting.Bool("invert", "Invert up / down", false).adv());
             instance = this;
         }
 
         public static void update(Minecraft mc, boolean held) {
             if (mc.player == null) return;
-            boolean want = held && instance.isEnabled();
+            boolean want;
+            if (instance.mode.v == 1) {
+                if (held && !wasHeld) want = !active;
+                else want = active;
+            } else want = held;
+            wasHeld = held;
+            want &= instance.isEnabled();
             if (want && !active) {
                 yaw = mc.player.getYRot();
                 pitch = mc.player.getXRot();
@@ -126,15 +177,15 @@ public final class QolFeatures {
         /** Same sensitivity maths as Entity#turn. */
         public static void turn(double dy, double dx) {
             yaw += (float) dy * 0.15f;
-            pitch = Mth.clamp(pitch + (float) dx * 0.15f, -90f, 90f);
+            pitch = Mth.clamp(pitch + (float) dx * (instance.invert.v ? -0.15f : 0.15f), -90f, 90f);
         }
     }
 
-    static final class ToggleKey extends Feature {
+    static final class ToggleKey extends Simple {
         private boolean on;
 
-        ToggleKey(String id, String name, String description, boolean def) {
-            super(id, name, Category.QOL, description, def);
+        ToggleKey(String id, String name, String description) {
+            super(id, name, description);
         }
 
         @Override
@@ -155,11 +206,13 @@ public final class QolFeatures {
         }
     }
 
-    static final class DeathCoords extends Feature {
+    static final class DeathCoords extends Simple {
         private boolean wasDead;
+        final Setting.Bool copy;
 
         DeathCoords() {
-            super("death_coords", "Death coordinates", Category.QOL, "Posts where you died in your chat (only you see it).", true);
+            super("death_coords", "Death coordinates", "Tells you in chat where you died (only you see it), so you can get your stuff back.");
+            copy = add(new Setting.Bool("copy", "Also copy them", false).help("Puts the coordinates on your clipboard."));
         }
 
         @Override
@@ -172,17 +225,18 @@ public final class QolFeatures {
             if (mc.player == null) return;
             boolean dead = mc.player.isDeadOrDying();
             if (dead && !wasDead) {
-                Compat.say(mc, (String.format(Locale.ROOT, "[Ember] You died at %d %d %d in %s",
-                        mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ(), Compat.dimension(mc))));
+                String c = String.format(Locale.ROOT, "%d %d %d", mc.player.getBlockX(), mc.player.getBlockY(), mc.player.getBlockZ());
+                Compat.say(mc, "[Ember] You died at " + c + " in " + Compat.dimension(mc));
+                if (copy.v) mc.keyboardHandler.setClipboard(c);
             }
             wasDead = dead;
         }
     }
 
     /** Adds a Reconnect button to the disconnect screen. */
-    static final class AutoReconnect extends Feature {
+    static final class AutoReconnect extends Simple {
         AutoReconnect() {
-            super("reconnect", "Reconnect button", Category.QOL, "One click to rejoin after a disconnect or kick.", true);
+            super("reconnect", "Reconnect button", "Adds a button to rejoin the server after a disconnect or kick. Works with Remember last server.");
             ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {
                 if (!isEnabled() || !(screen instanceof DisconnectedScreen) || lastServer == null) return;
                 ServerData target = lastServer;
@@ -193,11 +247,11 @@ public final class QolFeatures {
     }
 
     /** Search box above container screens; non-matching slots are dimmed. */
-    static final class InventorySearch extends Feature {
+    static final class InventorySearch extends Simple {
         private static String query = "";
 
         InventorySearch() {
-            super("inventory_search", "Inventory search", Category.QOL, "Type to highlight matching items in chests and your inventory.", true);
+            super("inventory_search", "Inventory search", "A search box on chests and your inventory. Items that don't match fade out.");
             ScreenEvents.AFTER_INIT.register((mc, screen, w, h) -> {
                 if (!isEnabled() || !(screen instanceof AbstractContainerScreen<?> cs) || screen instanceof CreativeModeInventoryScreen) return;
                 var acc = (AbstractContainerScreenAccessor) cs;

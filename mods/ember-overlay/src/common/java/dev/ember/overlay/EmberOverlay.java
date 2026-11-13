@@ -4,11 +4,14 @@ import dev.ember.overlay.compat.Compat;
 import dev.ember.overlay.core.Config;
 import dev.ember.overlay.core.Feature;
 import dev.ember.overlay.core.FeatureRegistry;
+import dev.ember.overlay.core.ModScan;
 import dev.ember.overlay.features.HudFeatures;
 import dev.ember.overlay.features.QolFeatures;
 import dev.ember.overlay.features.VisualFeatures;
 import dev.ember.overlay.hud.HudRenderer;
+import dev.ember.overlay.ui.HudEditorScreen;
 import dev.ember.overlay.ui.OverlayScreen;
+import dev.ember.overlay.ui.Theme;
 import dev.ember.overlay.ui.ServerSwitcherScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -40,14 +43,34 @@ public final class EmberOverlay implements ClientModInitializer {
         copyCoords = Compat.key("copycoords", Compat.UNBOUND);
         for (int i = 0; i < macros.length; i++) macros[i] = Compat.key("macro" + (i + 1), Compat.UNBOUND);
 
+        // Shown on each feature's settings page ("Key: C").
+        bindKey("zoom", zoom);
+        bindKey("freelook", freelook);
+        bindKey("snap_look", snapLook);
+        bindKey("stopwatch", stopwatch);
+        bindKey("memory_cleaner", memory);
+        bindKey("server_switcher", servers);
+        bindKey("cinematic_key", cinematic);
+        bindKey("copy_coords", copyCoords);
+        bindKey("macros", macros[0]);
+
         // Options (gamma etc.) exist once the client has started; apply saved toggles then.
         ClientLifecycleEvents.CLIENT_STARTED.register(mc -> {
             Config.load();
+            ModScan.run();
+            Theme.load();
             FeatureRegistry.rebuildActiveLists();
             if (SELFTEST) {
                 int available = 0;
                 for (Feature f : FeatureRegistry.all()) if (f.isAvailable()) available++;
-                System.out.println("EMBER_SELFTEST_OK features=" + FeatureRegistry.count() + " working=" + available);
+                int on = 0, settings = 0;
+                for (Feature f : FeatureRegistry.all()) {
+                    if (f.isEnabled()) on++;
+                    settings += f.settings.size();
+                }
+                // Everything must start off.
+                if (on != 0) throw new IllegalStateException(on + " features are on by default");
+                System.out.println("EMBER_SELFTEST_OK features=" + FeatureRegistry.count() + " working=" + available + " settings=" + settings);
             }
         });
         ClientLifecycleEvents.CLIENT_STOPPING.register(mc -> Config.save());
@@ -55,15 +78,50 @@ public final class EmberOverlay implements ClientModInitializer {
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
     }
 
+    private static void bindKey(String feature, KeyMapping key) {
+        Feature f = FeatureRegistry.get(feature);
+        if (f != null) f.key = key;
+    }
+
     /** CI only: `gradle runClient -Pselftest` boots the game, reports, then quits. */
     private static final boolean SELFTEST = System.getProperty("ember.selftest") != null;
     private int selftestTicks;
 
-    private void tick(Minecraft mc) {
-        if (SELFTEST && ++selftestTicks > 200) {
-            System.out.println("EMBER_SELFTEST_EXIT");
-            Runtime.getRuntime().halt(0);
+    /**
+     * Opens every kind of menu page so a rendering bug crashes the CI run, and prints
+     * EMBER_SHOT markers the workflow uses to take screenshots of each page.
+     */
+    private static void selftest(Minecraft mc, int t) {
+        switch (t) {
+            case 40 -> {
+                FeatureRegistry.get("zoom").setEnabled(true);
+                FeatureRegistry.get("fps").setEnabled(true);
+                FeatureRegistry.get("keystrokes").setEnabled(true);
+                Compat.setScreen(mc, new OverlayScreen());
+            }
+            case 80 -> System.out.println("EMBER_SHOT grid");
+            case 100 -> Compat.setScreen(mc, new OverlayScreen(FeatureRegistry.get("crosshair").isAvailable() ? FeatureRegistry.get("crosshair") : FeatureRegistry.get("zoom")));
+            case 140 -> System.out.println("EMBER_SHOT details");
+            case 160 -> Compat.setScreen(mc, new OverlayScreen(FeatureRegistry.get("armor")));
+            case 200 -> System.out.println("EMBER_SHOT armor");
+            case 220 -> Compat.setScreen(mc, new OverlayScreen(FeatureRegistry.get("macros")));
+            case 260 -> System.out.println("EMBER_SHOT macros");
+            case 280 -> Compat.setScreen(mc, new HudEditorScreen(null, null));
+            case 310 -> System.out.println("EMBER_SHOT editor");
+            case 330 -> {
+                Compat.setScreen(mc, null);
+                System.out.println("EMBER_SELFTEST_UI_OK");
+            }
+            case 340 -> {
+                System.out.println("EMBER_SELFTEST_EXIT");
+                Runtime.getRuntime().halt(0);
+            }
+            default -> {}
         }
+    }
+
+    private void tick(Minecraft mc) {
+        if (SELFTEST) selftest(mc, ++selftestTicks);
         // Features that asked for ticks (only the enabled ones are in this list).
         List<Feature> ticking = FeatureRegistry.ticking();
         for (int i = 0, n = ticking.size(); i < n; i++) ticking.get(i).tick(mc);

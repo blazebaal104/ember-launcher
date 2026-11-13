@@ -22,6 +22,7 @@ public final class FeatureRegistry {
 
     public static <T extends Feature> T register(T feature) {
         if (FEATURES.put(feature.id, feature) != null) throw new IllegalStateException("duplicate feature " + feature.id);
+        feature.finishSettings();
         return feature;
     }
 
@@ -33,6 +34,10 @@ public final class FeatureRegistry {
         List<Feature> out = new ArrayList<>();
         for (Feature f : FEATURES.values()) if (f.category == c) out.add(f);
         return out;
+    }
+
+    public static Feature get(String id) {
+        return FEATURES.get(id);
     }
 
     public static int count() {

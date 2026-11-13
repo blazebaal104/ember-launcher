@@ -14,6 +14,7 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ConnectScreen;
@@ -26,7 +27,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Minecraft 1.21.x edition of the version adapter (era settings: {'hud': 'new', 'keys': 'category', 'ids': 'resloc', 'leave': 'new', 'debug': False}).
+ * Minecraft 1.21.x edition of the version adapter (era settings: {'hud': 'new', 'keys': 'category', 'ids': 'resloc', 'leave': 'new', 'debug': False, 'pose': 'matrix', 'input': 'new'}).
  * Same static API as the 26.x edition in src/modern.
  */
 public final class Compat {
@@ -69,6 +70,16 @@ public final class Compat {
             if (!hide.getAsBoolean()) orig.render(g, d);
             else if (drawInstead != null) drawInstead.accept(HUD_GFX.wrap(g));
         });
+    }
+
+    public static void pushScale(GuiGraphics g, float x, float y, float s) {
+        g.pose().pushMatrix();
+        g.pose().translate(x, y);
+        g.pose().scale(s, s);
+    }
+
+    public static void popScale(GuiGraphics g) {
+        g.pose().popMatrix();
     }
 
     public static void afterScreenDraw(Screen screen, Consumer<Gfx> draw) {

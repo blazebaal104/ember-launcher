@@ -13,6 +13,7 @@ import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.ChatComponent;
 import net.minecraft.client.gui.screens.ConnectScreen;
@@ -25,7 +26,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 
 /**
- * Minecraft 1.21.x edition of the version adapter (era settings: {'hud': 'old', 'keys': 'string', 'ids': 'resloc', 'leave': 'old', 'debug': True}).
+ * Minecraft 1.21.x edition of the version adapter (era settings: {'hud': 'old', 'keys': 'string', 'ids': 'resloc', 'leave': 'old', 'debug': True, 'pose': 'stack', 'input': 'old'}).
  * Same static API as the 26.x edition in src/modern.
  */
 public final class Compat {
@@ -56,6 +57,16 @@ public final class Compat {
 
     public static void overrideVanilla(VanillaElement which, BooleanSupplier hide, Consumer<Gfx> drawInstead) {
         // Not supported on this version; the features are shown as unavailable.
+    }
+
+    public static void pushScale(GuiGraphics g, float x, float y, float s) {
+        g.pose().pushPose();
+        g.pose().translate(x, y, 0);
+        g.pose().scale(s, s, 1);
+    }
+
+    public static void popScale(GuiGraphics g) {
+        g.pose().popPose();
     }
 
     public static void afterScreenDraw(Screen screen, Consumer<Gfx> draw) {

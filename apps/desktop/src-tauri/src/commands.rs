@@ -296,6 +296,21 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
         Ok(s) => tracing::info!(state = ?s, "ember overlay"),
         Err(e) => tracing::warn!(error = %e, "could not update the in-game menu"),
     }
+    // The in-game menu uses the launcher's theme and accent colour.
+    {
+        let ui = state.settings.lock().await.ui.clone().unwrap_or_default();
+        let pick = |k: &str| ui.get(k).cloned().unwrap_or(serde_json::Value::Null);
+        let theme = serde_json::json!({
+            "theme": pick("theme"),
+            "accent": pick("accent"),
+            "glass": pick("glass"),
+            "glassStrength": pick("glassStrength"),
+        });
+        let dir = state.paths.instance(&inst.id).join("config");
+        if tokio::fs::create_dir_all(&dir).await.is_ok() {
+            let _ = tokio::fs::write(dir.join("ember-theme.json"), serde_json::to_vec_pretty(&theme).unwrap_or_default()).await;
+        }
+    }
     let component = prepared.json.java_version.as_ref().map(|j| j.component.clone()).unwrap_or_else(|| "java-runtime-delta".into());
     let java = java::ensure_runtime(&state.client, &state.paths, &component, Some(emit("java"))).await?;
 

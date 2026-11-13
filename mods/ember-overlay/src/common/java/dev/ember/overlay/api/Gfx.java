@@ -15,4 +15,14 @@ public interface Gfx {
     void item(ItemStack stack, int x, int y);
 
     void itemDecorations(ItemStack stack, int x, int y);
+
+    /** Move the origin to (x, y) and scale everything drawn until {@link #pop}. */
+    void push(float x, float y, float scale);
+
+    void pop();
+
+    /** Only draw inside this rectangle until {@link #unclip}. */
+    void clip(int x1, int y1, int x2, int y2);
+
+    void unclip();
 }
