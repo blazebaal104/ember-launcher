@@ -63,7 +63,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: overlay-out
-          key: overlay-t1-${{ matrix.v.mc }}-${{ hashFiles('mods/ember-overlay/src/common/**', format('mods/ember-overlay/src/{0}/**', steps.src.outputs.family), format('mods/ember-overlay/src/{0}/**', steps.src.outputs.era), 'mods/ember-overlay/*.gradle', 'mods/ember-overlay/gradle.properties', 'mods/ember-overlay/legacy/**', 'mods/ember-overlay/tools/**') }}
+          key: overlay-${{ contains(github.ref_name, 'introspect') && github.run_id || 't1' }}-${{ matrix.v.mc }}-${{ hashFiles('mods/ember-overlay/src/common/**', format('mods/ember-overlay/src/{0}/**', steps.src.outputs.family), format('mods/ember-overlay/src/{0}/**', steps.src.outputs.era), 'mods/ember-overlay/*.gradle', 'mods/ember-overlay/gradle.properties', 'mods/ember-overlay/legacy/**', 'mods/ember-overlay/tools/**') }}
 
       - name: Pick project and versions
         if: steps.cache.outputs.cache-hit != 'true'
@@ -107,6 +107,18 @@ jobs:
           python3 "$GITHUB_WORKSPACE/mods/ember-overlay/tools/gen_legacy_compat.py"
           ARGS="-Pminecraft_version=$MC -Pfabric_api_version=${{ steps.cfg.outputs.fapi }} -Ploader_version=${{ steps.cfg.outputs.loader }} -Pera=$ERA"
           gradle build $ARGS "-Pmc_range=${{ steps.cfg.outputs.range }}" --stacktrace 2>&1 | tee -a "$GITHUB_WORKSPACE/overlay-$MC-build.log"; exit ${PIPESTATUS[0]}
+
+      # Dev tool (branches named overlay-dev-introspect*): exact signatures of the classes we
+      # need, from the remapped (Mojang names) Minecraft jar of THIS version.
+      - name: Mapped signatures
+        if: contains(github.ref_name, 'introspect') && steps.cache.outputs.cache-hit != 'true'
+        run: |
+          JAR=$(find ~/.gradle/caches/fabric-loom ${{ steps.cfg.outputs.dir }}/.gradle/loom-cache -name "minecraft-*.jar" 2>/dev/null | grep -v sources | xargs ls -S 2>/dev/null | head -1)
+          echo "jar: $JAR" > "overlay-$MC-javap.log"
+          for c in net.minecraft.client.renderer.texture.DynamicTexture com.mojang.blaze3d.platform.NativeImage net.minecraft.client.renderer.texture.TextureManager net.minecraft.client.renderer.texture.AbstractTexture net.minecraft.client.gui.GuiGraphics net.minecraft.client.gui.GuiGraphicsExtractor; do
+            echo "===== $c" >> "overlay-$MC-javap.log"
+            javap -cp "$JAR" "$c" 2>&1 | grep -E "class |DynamicTexture\(|upload|getPixels|setPixel|register\(|release|blit\(|close\(|MISSING|error" >> "overlay-$MC-javap.log" || true
+          done
 
       - name: Collect jar
         if: steps.cache.outputs.cache-hit != 'true'
