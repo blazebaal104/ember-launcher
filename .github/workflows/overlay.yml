@@ -99,18 +99,19 @@ jobs:
           export LIBGL_ALWAYS_SOFTWARE=1
           ARGS="-Pminecraft_version=$MC -Pfabric_api_version=${{ steps.cfg.outputs.fapi }} -Ploader_version=${{ steps.cfg.outputs.loader }} -Pera=$ERA"
           LOG="$GITHUB_WORKSPACE/overlay-$MC-selftest.log"; : > "$LOG"
-          Xvfb :99 -screen 0 1280x720x24 > /dev/null 2>&1 &
-          export DISPLAY=:99
-          # The game prints "EMBER_SHOT <page>" while each menu page is open; screenshot it.
-          ( tail -F "$LOG" 2>/dev/null | while read -r line; do
-              case "$line" in *EMBER_SHOT*)
-                n=$(echo "$line" | sed 's/.*EMBER_SHOT //' | tr -cd 'a-z')
-                import -window root "$GITHUB_WORKSPACE/shot-$MC-$n.png" || true;;
-              esac
-            done ) &
-          WATCH=$!
-          timeout 600 gradle runClient $ARGS "-Pmc_range=${{ steps.cfg.outputs.range }}" -Pselftest --stacktrace >> "$LOG" 2>&1 || true
-          sleep 1; kill $WATCH 2>/dev/null || true; pkill -f "tail -F" || true
+          export LOG MC ARGS RANGE="${{ steps.cfg.outputs.range }}" OUT="$GITHUB_WORKSPACE"
+          # Same virtual screen as before (xvfb-run sets up GLX correctly for 26.x); inside it a
+          # watcher screenshots each menu page when the game prints "EMBER_SHOT <page>".
+          timeout 600 xvfb-run -a -s "-screen 0 1280x720x24 +extension GLX +render -noreset" bash -c '
+            ( tail -F "$LOG" 2>/dev/null | while read -r line; do
+                case "$line" in *EMBER_SHOT*)
+                  n=$(echo "$line" | sed "s/.*EMBER_SHOT //" | tr -cd "a-z")
+                  import -window root "$OUT/shot-$MC-$n.png" || true;;
+                esac
+              done ) &
+            gradle runClient $ARGS "-Pmc_range=$RANGE" -Pselftest --stacktrace >> "$LOG" 2>&1
+            pkill -f "tail -F" || true
+          ' || true
           tail -n 40 "$LOG"
           if grep -q "EMBER_SELFTEST_OK" "$LOG" && grep -q "EMBER_SELFTEST_UI_OK" "$LOG"; then echo "SELFTEST PASSED"; else echo "SELFTEST FAILED"; exit 1; fi
 
