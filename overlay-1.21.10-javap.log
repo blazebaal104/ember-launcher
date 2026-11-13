@@ -1,0 +1,13 @@
+jar: /home/runner/.gradle/caches/fabric-loom/26.3/minecraft-server.jar
+===== net.minecraft.client.renderer.texture.DynamicTexture
+Error: class not found: net.minecraft.client.renderer.texture.DynamicTexture
+===== com.mojang.blaze3d.platform.NativeImage
+Error: class not found: com.mojang.blaze3d.platform.NativeImage
+===== net.minecraft.client.renderer.texture.TextureManager
+Error: class not found: net.minecraft.client.renderer.texture.TextureManager
+===== net.minecraft.client.renderer.texture.AbstractTexture
+Error: class not found: net.minecraft.client.renderer.texture.AbstractTexture
+===== net.minecraft.client.gui.GuiGraphics
+Error: class not found: net.minecraft.client.gui.GuiGraphics
+===== net.minecraft.client.gui.GuiGraphicsExtractor
+Error: class not found: net.minecraft.client.gui.GuiGraphicsExtractor
