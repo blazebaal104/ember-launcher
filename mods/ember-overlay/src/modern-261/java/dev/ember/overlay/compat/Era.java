@@ -26,4 +26,12 @@ final class Era {
     static boolean hudHidden(Minecraft mc) {
         return mc.options.hideGui;
     }
+
+    static boolean loading(Minecraft mc) {
+        return mc.getOverlay() != null;
+    }
+
+    static net.minecraft.resources.Identifier effectSprite(net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect) {
+        return net.minecraft.client.gui.Gui.getMobEffectSprite(effect);
+    }
 }

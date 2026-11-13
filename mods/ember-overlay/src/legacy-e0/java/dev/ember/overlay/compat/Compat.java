@@ -107,6 +107,11 @@ public final class Compat {
         return mc.options.hideGui || mc.getDebugOverlay().showDebugScreen();
     }
 
+    /** True while the loading screen (resource reload) is showing. */
+    public static boolean loading(Minecraft mc) {
+        return mc.getOverlay() != null;
+    }
+
     public static boolean mouseDown(Minecraft mc, boolean left) {
         return left ? mc.mouseHandler.isLeftPressed() : mc.mouseHandler.isRightPressed();
     }

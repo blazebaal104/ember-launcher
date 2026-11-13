@@ -117,6 +117,11 @@ public final class Compat {
         return Era.hudHidden(mc) || mc.getDebugOverlay().showDebugScreen();
     }
 
+    /** True while the loading screen (resource reload) is showing. */
+    public static boolean loading(Minecraft mc) {
+        return Era.loading(mc);
+    }
+
     public static boolean mouseDown(Minecraft mc, boolean left) {
         return left ? mc.mouseHandler.isLeftPressed() : mc.mouseHandler.isRightPressed();
     }

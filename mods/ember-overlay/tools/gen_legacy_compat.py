@@ -10,7 +10,7 @@ The 1.21.x line changed a few APIs between releases; each era flips the relevant
   pose:  "stack" = PoseStack pushPose/popPose (≤1.21.5), "matrix" = Matrix3x2fStack (1.21.6+)
   input: "old" = mouseClicked(double, double, int) (≤1.21.8), "new" = MouseButtonEvent (1.21.9+)
   sprite: how effect icons are drawn: "atlas" = MobEffectTextureManager (1.21.1),
-          "rendertype" = blitSprite(RenderType::guiTextured, ...) (1.21.2-1.21.5),
+          "rendertype" = blitSprite(RenderType::guiTextured, atlas sprite, ...) (1.21.2-1.21.5),
           "pipeline" = blitSprite(RenderPipelines.GUI_TEXTURED, ...) (1.21.6+)
 Also writes EmberScreen.java (the overlay's screen base class) for each era.
 Run: python3 tools/gen_legacy_compat.py   (CI runs it before building)
@@ -115,7 +115,7 @@ def render(e):
     }'''
     elif e["sprite"] == "rendertype":
         sprite = '''    public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
-        g.blitSprite(net.minecraft.client.renderer.RenderType::guiTextured, net.minecraft.client.gui.Gui.getMobEffectSprite(effect), x, y, 18, 18);
+        g.blitSprite(net.minecraft.client.renderer.RenderType::guiTextured, Minecraft.getInstance().getMobEffectTextures().get(effect), x, y, 18, 18);
     }'''
     else:
         sprite = '''    public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
@@ -205,6 +205,11 @@ public final class Compat {{
 
     public static boolean hudHidden(Minecraft mc) {{
         return {hidden};
+    }}
+
+    /** True while the loading screen (resource reload) is showing. */
+    public static boolean loading(Minecraft mc) {{
+        return mc.getOverlay() != null;
     }}
 
     public static boolean mouseDown(Minecraft mc, boolean left) {{

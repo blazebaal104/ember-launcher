@@ -71,7 +71,7 @@ public final class Compat {
     }
 
     public static void effectIcon(GuiGraphics g, net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y) {
-        g.blitSprite(net.minecraft.client.renderer.RenderType::guiTextured, net.minecraft.client.gui.Gui.getMobEffectSprite(effect), x, y, 18, 18);
+        g.blitSprite(net.minecraft.client.renderer.RenderType::guiTextured, Minecraft.getInstance().getMobEffectTextures().get(effect), x, y, 18, 18);
     }
 
     public static void afterScreenDraw(Screen screen, Consumer<Gfx> draw) {
@@ -105,6 +105,11 @@ public final class Compat {
 
     public static boolean hudHidden(Minecraft mc) {
         return mc.options.hideGui || mc.getDebugOverlay().showDebugScreen();
+    }
+
+    /** True while the loading screen (resource reload) is showing. */
+    public static boolean loading(Minecraft mc) {
+        return mc.getOverlay() != null;
     }
 
     public static boolean mouseDown(Minecraft mc, boolean left) {
