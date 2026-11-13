@@ -54,6 +54,10 @@ public final class MapData {
 
     private static final Map<Long, byte[]> chunks = new HashMap<>();
     private static final Map<Long, Long> scannedAt = new HashMap<>();
+    /** Per 128x128-block tile (8x8 chunks): bumped when terrain inside it changes. */
+    private static final Map<Long, Integer> tileVer = new HashMap<>();
+    /** Your recent path ("footsteps"), newest last. */
+    private static final java.util.ArrayDeque<int[]> trail = new java.util.ArrayDeque<>();
     private static String world;
     private static boolean dirty, caveMode;
     private static long lastSave;
@@ -90,6 +94,24 @@ public final class MapData {
         if (p == 0) return 0;
         if (!rgbReady) buildRgb();
         return RGB[p];
+    }
+
+    public static String world() {
+        return world == null ? "" : world;
+    }
+
+    /** Version of a tile's terrain, or -1 if nothing in it was explored. */
+    public static int tileVersion(int tx, int tz) {
+        Integer v = tileVer.get(key(tx, tz));
+        return v == null ? -1 : v;
+    }
+
+    public static Iterable<int[]> trail() {
+        return trail;
+    }
+
+    private static void touchTile(int cx, int cz) {
+        tileVer.merge(key(cx >> 3, cz >> 3), 1, Integer::sum);
     }
 
     public static boolean cave() {
@@ -129,6 +151,12 @@ public final class MapData {
             load(w);
         }
         caveMode = caveInNether && w.endsWith("the_nether");
+        int px = mc.player.getBlockX(), pz = mc.player.getBlockZ();
+        int[] last = trail.peekLast();
+        if (last == null || Math.abs(last[0] - px) + Math.abs(last[1] - pz) >= 6) {
+            trail.addLast(new int[]{px, pz});
+            if (trail.size() > 300) trail.removeFirst();
+        }
         int pcx = mc.player.getBlockX() >> 4, pcz = mc.player.getBlockZ() >> 4;
         long now = System.currentTimeMillis();
         // Spend at most ~1.5 ms per tick (3% of a tick): the area around you fills in within a
@@ -192,6 +220,7 @@ public final class MapData {
         }
         byte[] out = chunks.computeIfAbsent(key(cx, cz), k -> new byte[256]);
         int missing = 0;
+        boolean changed = false;
         for (int dz = 0; dz < 16; dz++) {
             for (int dx = 0; dx < 16; dx++) {
                 int id = ids[dz * 16 + dx];
@@ -207,10 +236,14 @@ public final class MapData {
                 if (out[dz * 16 + dx] != b) {
                     out[dz * 16 + dx] = b;
                     dirty = true;
+                    changed = true;
                 }
             }
         }
-        version++;
+        if (changed) {
+            touchTile(cx, cz);
+            version++;
+        }
         return missing < 8;
     }
 
@@ -224,6 +257,8 @@ public final class MapData {
         world = w;
         chunks.clear();
         scannedAt.clear();
+        tileVer.clear();
+        trail.clear();
         dirty = false;
         lastSave = System.currentTimeMillis();
         Path f = file(w);
@@ -236,6 +271,7 @@ public final class MapData {
                 byte[] b = new byte[256];
                 in.readFully(b);
                 chunks.put(k, b);
+                tileVer.putIfAbsent(key((int) (k >> 32) >> 3, (int) k >> 3), 0);
             }
         } catch (IOException e) {
             System.err.println("[ember-overlay] could not read map " + f + ": " + e);
@@ -274,6 +310,8 @@ public final class MapData {
         world = null;
         chunks.clear();
         scannedAt.clear();
+        tileVer.clear();
+        trail.clear();
         version++;
     }
 

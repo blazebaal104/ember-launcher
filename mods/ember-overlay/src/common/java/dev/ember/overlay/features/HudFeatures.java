@@ -781,6 +781,52 @@ public final class HudFeatures {
             return cave.v;
         }
 
+        private dev.ember.overlay.api.Canvas canvas;
+        private int canvasCells = -1, builtVersion = -1;
+        private long builtKey, builtAt;
+        private boolean canvasBroken;
+
+        /** Repaint the minimap texture when you move a block, the terrain changes, or settings change. */
+        private boolean paint(int cells, double bpc, double left, double top, boolean circle) {
+            if (canvasBroken) return false;
+            try {
+                if (canvas == null || canvasCells != cells) {
+                    if (canvas != null) canvas.close();
+                    canvas = Compat.canvas("minimap", cells, cells);
+                    canvasCells = cells;
+                    builtVersion = -1;
+                }
+            } catch (Throwable e) {
+                System.err.println("[ember-overlay] minimap texture unavailable, using fills: " + e);
+                canvasBroken = true;
+                return false;
+            }
+            long key = (long) Math.floor(left / bpc) * 73856093L ^ (long) Math.floor(top / bpc) * 19349663L ^ (circle ? 1 : 2) ^ Double.hashCode(bpc);
+            long now = System.currentTimeMillis();
+            boolean terrain = MapData.version != builtVersion && now - builtAt > 200;
+            if (key == builtKey && !terrain) return true;
+            builtKey = key;
+            builtVersion = MapData.version;
+            builtAt = now;
+            double c = cells / 2.0, r2 = c * c;
+            for (int j = 0; j < cells; j++) {
+                int wz = (int) Math.floor(top + (j + 0.5) * bpc);
+                for (int i = 0; i < cells; i++) {
+                    if (circle) {
+                        double dx = i + 0.5 - c, dy = j + 0.5 - c;
+                        if (dx * dx + dy * dy > r2) {
+                            canvas.set(i, j, 0);
+                            continue;
+                        }
+                    }
+                    int col = MapData.colorAt((int) Math.floor(left + (i + 0.5) * bpc), wz);
+                    canvas.set(i, j, col == 0 ? 0xFF101216 : col);
+                }
+            }
+            canvas.upload();
+            return true;
+        }
+
         @Override
         public int render(Gfx g, Minecraft mc, int x, int y) {
             int s = size.v, r = s / 2;
@@ -789,16 +835,37 @@ public final class HudFeatures {
             double px = mc.player.getX(), pz = mc.player.getZ();
             int cellPx = bpp < 1 ? (int) Math.round(1 / bpp) : 1;
             double bpc = bpp < 1 ? 1 : bpp;
+            int cells = Math.max(8, s / cellPx);
             // align the grid to whole blocks so it doesn't shimmer while you walk
-            double left = Math.floor(px - r * bpp), top = Math.floor(pz - r * bpp);
-            view.build(left, top, s, s, cellPx, bpc, circle);
+            double left = Math.floor(px - cells / 2.0 * bpc), top = Math.floor(pz - cells / 2.0 * bpc);
             if (border.v) {
                 if (circle) Draw.circle(g, x + r, y + r, r + 1, borderColor.v);
                 else Draw.round(g, x - 1, y - 1, x + s + 1, y + s + 1, look.rounded() ? 3 : 0, borderColor.v);
             }
-            if (circle) Draw.circle(g, x + r, y + r, r, 0xFF101216);
-            else g.fill(x, y, x + s, y + s, 0xFF101216);
-            view.draw(g, x, y);
+            if (paint(cells, bpc, left, top, circle)) {
+                g.push(x, y, s / (float) cells);
+                g.canvas(canvas, 0, 0);
+                g.pop();
+            } else {
+                if (circle) Draw.circle(g, x + r, y + r, r, 0xFF101216);
+                else g.fill(x, y, x + s, y + s, 0xFF101216);
+                view.build(left, top, s, s, cellPx, bpc, circle);
+                view.draw(g, x, y);
+            }
+            int cx = x + r, cy = y + r;
+            // waypoints (clamped to the edge when they're further away)
+            for (var w : dev.ember.overlay.map.Waypoints.all()) {
+                if (!w.visible) continue;
+                double dx = (w.x + 0.5 - px) / bpp, dz = (w.z + 0.5 - pz) / bpp;
+                double lim = r - 5, len = circle ? Math.hypot(dx, dz) : Math.max(Math.abs(dx), Math.abs(dz));
+                if (len > lim) {
+                    dx = dx / len * lim;
+                    dz = dz / len * lim;
+                }
+                int wx = cx + (int) Math.round(dx), wy = cy + (int) Math.round(dz);
+                g.fill(wx - 2, wy - 2, wx + 3, wy + 3, 0xC0000000);
+                g.fill(wx - 1, wy - 1, wx + 2, wy + 2, w.color);
+            }
             int cx = x + r, cy = y + r;
             for (Dot d : snapshot) {
                 int ix = cx + (int) Math.round(d.dx() / bpp), iy = cy + (int) Math.round(d.dz() / bpp);

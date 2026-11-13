@@ -111,7 +111,7 @@ jobs:
       # Dev tool (branches named overlay-dev-introspect*): exact signatures of the classes we
       # need, from the remapped (Mojang names) Minecraft jar of THIS version.
       - name: Mapped signatures
-        if: contains(github.ref_name, 'introspect') && steps.cache.outputs.cache-hit != 'true'
+        if: always() && contains(github.ref_name, 'introspect') && steps.cache.outputs.cache-hit != 'true'
         run: |
           JAR=""
           for j in $(find ~/.gradle/caches/fabric-loom ${{ steps.cfg.outputs.dir }}/.gradle/loom-cache -name "*.jar" 2>/dev/null | grep -v sources | grep -F -- "$MC"); do
