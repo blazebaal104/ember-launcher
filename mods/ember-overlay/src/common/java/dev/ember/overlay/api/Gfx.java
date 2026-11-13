@@ -26,6 +26,9 @@ public interface Gfx {
 
     void unclip();
 
+    /** Draw a {@link Canvas} with its top-left at (x, y), at its own size (use push to scale). */
+    void canvas(Canvas c, int x, int y);
+
     /** A potion effect's icon, 18x18 like in the inventory. */
     void effectIcon(net.minecraft.core.Holder<net.minecraft.world.effect.MobEffect> effect, int x, int y);
 }

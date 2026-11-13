@@ -1,7 +1,7 @@
 import subprocess, base64, os, sys
 # Run from a folder containing lucide-static (npm pack lucide-static; tar xzf *.tgz).
 from PIL import Image
-S = 32
+S = 48
 M = {
  "fps":"gauge","cps":"mouse-pointer-click","keystrokes":"keyboard","ping":"signal","coords":"map-pin","direction":"compass",
  "biome":"trees","armor":"shield","potions":"flask-conical","stopwatch":"timer","clock":"clock","speed":"wind","memory":"memory-stick",
@@ -17,7 +17,7 @@ M = {
  "ui_on":"toggle-right","ui_hud":"monitor","ui_visual":"palette","ui_utility":"wrench","ui_owned":"package-check","ui_servers":"server","ui_shots":"images","ui_close":"x",
 }
 out = {}
-sheet = Image.new("RGB", (len(M)*36, 36), (23,26,32))
+sheet = Image.new("RGB", (len(M)*52, 52), (23,26,32))
 for i,(k,name) in enumerate(M.items()):
     svg = f"package/icons/{name}.svg"
     if not os.path.exists(svg): print("MISSING", k, name); continue
@@ -30,17 +30,17 @@ for i,(k,name) in enumerate(M.items()):
         x = 0
         while x < S:
             a = im.getpixel((x,y))[3]
-            lvl = round(a/255*3)
+            lvl = round(a/255*15)
             if lvl == 0: x += 1; continue
             x0 = x
-            while x < S and round(im.getpixel((x,y))[3]/255*3) == lvl: x += 1
+            while x < S and round(im.getpixel((x,y))[3]/255*15) == lvl: x += 1
             runs += bytes([y, x0, x-x0, lvl])
     out[k] = base64.b64encode(bytes(runs)).decode()
     # preview
     for j in range(0,len(runs),4):
         y,x0,l,lv = runs[j:j+4]
-        c = int(23+(233-23)*lv/3)
-        for xx in range(x0,x0+l): sheet.putpixel((i*36+2+xx, 2+y),(c,c,c))
+        c = int(23+(233-23)*lv/15)
+        for xx in range(x0,x0+l): sheet.putpixel((i*52+2+xx, 2+y),(c,c,c))
 sheet = sheet.resize((sheet.width*2, sheet.height*2), Image.NEAREST)
 sheet.save("sheet.png")
 print(len(out), "icons, avg runs", sum(len(base64.b64decode(v))//4 for v in out.values())//len(out))

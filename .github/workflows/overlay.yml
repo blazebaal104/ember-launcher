@@ -114,11 +114,11 @@ jobs:
         if: contains(github.ref_name, 'introspect') && steps.cache.outputs.cache-hit != 'true'
         run: |
           JAR=""
-          for j in $(find ~/.gradle/caches/fabric-loom ${{ steps.cfg.outputs.dir }}/.gradle/loom-cache -name "*.jar" 2>/dev/null | grep -v sources); do
+          for j in $(find ~/.gradle/caches/fabric-loom ${{ steps.cfg.outputs.dir }}/.gradle/loom-cache -name "*.jar" 2>/dev/null | grep -v sources | grep -F -- "$MC"); do
             if unzip -l "$j" 2>/dev/null | grep -q "net/minecraft/client/renderer/texture/DynamicTexture.class"; then JAR="$j"; break; fi
           done
           echo "jar: $JAR" > "overlay-$MC-javap.log"
-          for c in net.minecraft.client.renderer.texture.DynamicTexture com.mojang.blaze3d.platform.NativeImage net.minecraft.client.renderer.texture.TextureManager net.minecraft.client.renderer.texture.AbstractTexture net.minecraft.client.gui.GuiGraphics net.minecraft.client.gui.GuiGraphicsExtractor; do
+          for c in net.minecraft.client.renderer.texture.DynamicTexture com.mojang.blaze3d.platform.NativeImage net.minecraft.client.renderer.texture.TextureManager net.minecraft.client.renderer.texture.AbstractTexture net.minecraft.client.gui.GuiGraphics net.minecraft.client.gui.GuiGraphicsExtractor net.minecraft.client.Minecraft; do
             echo "===== $c" >> "overlay-$MC-javap.log"
             javap -cp "$JAR" "$c" 2>&1 | grep -E "class |DynamicTexture\(|upload|getPixels|setPixel|register\(|release|blit\(|close\(|MISSING|error" >> "overlay-$MC-javap.log" || true
           done
