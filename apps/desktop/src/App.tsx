@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, MotionConfig } from "motion/react";
-import { useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { HashRouter, Route, Routes, useLocation } from "react-router-dom";
 import type { ContentCategory } from "@ember/content-engine";
 import { AppProvider, queryClient, useApp } from "./state";
@@ -22,6 +22,9 @@ import { motionFactor, transitionProps } from "./lib/appearance";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { UpdateDialog } from "./components/UpdateDialog";
 
+// Loaded on first visit: the 3D skin viewer (three.js) is big.
+const Account = lazy(() => import("./pages/Account").then((m) => ({ default: m.Account })));
+
 const CATS: ContentCategory[] = ["mods", "resourcepacks", "datapacks", "shaders", "modpacks", "plugins"];
 
 function Pages() {
@@ -43,6 +46,7 @@ function Pages() {
           <Route path="/servers" element={<Servers />} />
           <Route path="/servers/:id" element={<Servers />} />
           <Route path="/transfer" element={<Transfer />} />
+          <Route path="/account" element={<Suspense fallback={null}><Account /></Suspense>} />
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Home />} />
         </Routes>

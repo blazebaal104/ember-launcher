@@ -69,6 +69,41 @@ export interface AccountSummary {
   skinUrl?: string | null;
 }
 
+export interface McSkin { id: string; state: string; url: string; variant: string; alias?: string | null }
+export interface McCape { id: string; state: string; url: string; alias?: string | null }
+export interface McProfile { id: string; name: string; skins: McSkin[]; capes: McCape[] }
+export interface Privileges { onlineChat: boolean; multiplayerServer: boolean; multiplayerRealms: boolean; telemetry: boolean; profanityFilter: boolean; bans: string[] }
+export interface NameChange { changedAt?: string | null; createdAt?: string | null; nameChangeAllowed: boolean }
+export interface AccountDetails {
+  profile: McProfile;
+  privileges?: Privileges | null;
+  nameChange?: NameChange | null;
+  skinData?: string | null;
+  capeData?: string | null;
+  slim: boolean;
+  capeImages: Record<string, string>;
+}
+export interface AccountListItem { uuid: string; username: string; active: boolean; needsSignIn: boolean; lastUsed: number }
+export interface LibrarySkin { id: string; name: string; slim: boolean; addedAt: number; data: string }
+export interface NamedMinutes { name: string; minutes: number }
+export interface ServerVisit { address: string; lastJoined: number; joins: number; instanceName: string; version: string; instance: string }
+export interface AccountStats {
+  totalMinutes: number;
+  accountMinutes: number;
+  sessions: number;
+  longestSession: number;
+  favouriteVersion?: string | null;
+  favouriteLoader?: string | null;
+  mostPlayedInstance?: string | null;
+  lastPlayed?: number | null;
+  trackedSince?: number | null;
+  days: number[];
+  versions: NamedMinutes[];
+  instances: NamedMinutes[];
+  servers: ServerVisit[];
+  instanceCount: number;
+}
+
 export interface CreateInstanceReq {
   name: string;
   gameVersion: string;
@@ -372,6 +407,23 @@ export const api = {
   loginFinish: () => call<AccountSummary>("login_finish"),
   currentAccount: () => call<AccountSummary | null>("current_account"),
   logout: () => call<void>("logout"),
+  accountsList: () => call<AccountListItem[]>("accounts_list"),
+  accountSwitch: (uuid: string) => call<AccountSummary>("account_switch", { uuid }),
+  accountRemove: (uuid: string) => call<void>("account_remove", { uuid }),
+  accountDetails: () => call<AccountDetails>("account_details"),
+  accountUploadSkin: (data: string, slim: boolean, name?: string) => call<AccountDetails>("account_upload_skin", { data, slim, name }),
+  accountSetVariant: (slim: boolean) => call<AccountDetails>("account_set_variant", { slim }),
+  accountResetSkin: () => call<AccountDetails>("account_reset_skin"),
+  accountSetCape: (capeId: string | null) => call<AccountDetails>("account_set_cape", { capeId }),
+  accountNameCheck: (name: string) => call<string>("account_name_check", { name }),
+  accountNameChange: (name: string) => call<AccountDetails>("account_name_change", { name }),
+  accountStats: () => call<AccountStats>("account_stats_cmd"),
+  skinsList: () => call<LibrarySkin[]>("skins_list"),
+  skinSave: (name: string, data: string, slim: boolean) => call<void>("skin_save", { name, data, slim }),
+  skinSaveCurrent: () => call<void>("skin_save_current"),
+  skinRename: (id: string, name: string) => call<void>("skin_rename", { id, name }),
+  skinDelete: (id: string) => call<void>("skin_delete", { id }),
+  skinApply: (id: string) => call<AccountDetails>("skin_apply", { id }),
 
   launch: (id: string, server?: string, world?: string) => call<void>("launch_instance", { id, server, world }),
   stop: (id: string) => call<void>("stop_instance", { id }),

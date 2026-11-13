@@ -1,7 +1,7 @@
 //! IPC commands. Everything the webview sends is treated as untrusted input:
 //! ids are validated, download hosts are allow-listed, file names are sanitised.
-use crate::state::{AppState, CURSEFORGE_KEY, KEYRING_SERVICE, KEYRING_USER};
-use launcher_core::auth::{is_valid_client_id, Account, DeviceCode};
+use crate::state::{AppState, CURSEFORGE_KEY};
+use launcher_core::auth::is_valid_client_id;
 use launcher_core::settings::LauncherSettings;
 use launcher_core::download::{download_all, DownloadJob, Progress};
 use launcher_core::instance::{CreateInstance, HookReport, InstanceConfig};
@@ -62,20 +62,6 @@ pub async fn open_instance_folder(app: AppHandle, state: State<'_, AppState>, id
 
 // ------------------------------------------------------------------ auth
 
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct AccountSummary {
-    username: String,
-    uuid: String,
-    skin_url: Option<String>,
-}
-
-impl From<&Account> for AccountSummary {
-    fn from(a: &Account) -> Self {
-        Self { username: a.username.clone(), uuid: a.uuid.clone(), skin_url: a.skin_url.clone() }
-    }
-}
-
 // ------------------------------------------------------------------ settings
 
 #[derive(Serialize)]
@@ -113,141 +99,15 @@ pub async fn save_settings(state: State<'_, AppState>, settings: LauncherSetting
     settings.save(&state.paths).await?;
     *state.settings.lock().await = settings;
     if changed_id {
-        // Tokens belong to the old app; sign out so the next sign-in uses the new one.
+        // Tokens belong to the old app; the next sign-in uses the new one.
         *state.account.lock().await = None;
-        delete_refresh_token(&state).await;
     }
     get_settings(state).await
 }
 
 // ------------------------------------------------------------------ sign-in
-
-#[tauri::command]
-pub async fn login_start(state: State<'_, AppState>) -> Result<DeviceCode> {
-    let code = state.auth().await.start_device_flow().await?;
-    *state.pending_login.lock().await = Some(code.clone());
-    Ok(code)
-}
-
-/// Abandon a pending device-code sign-in (the poll stops at its next tick).
-#[tauri::command]
-pub async fn login_cancel(state: State<'_, AppState>) -> Result<()> {
-    *state.pending_login.lock().await = None;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn login_finish(state: State<'_, AppState>) -> Result<AccountSummary> {
-    let code = state.pending_login.lock().await.clone().ok_or_else(|| Error::Auth("no sign-in in progress".into()))?;
-    let auth = state.auth().await;
-    // Poll until done, but stop if the user cancelled or started a new sign-in.
-    let account = tokio::select! {
-        r = auth.complete_device_flow(&code) => r?,
-        _ = wait_cancelled(&state, &code.device_code) => return Err(Error::Auth("sign-in was cancelled".into())),
-    };
-    *state.pending_login.lock().await = None;
-    store_refresh_token(&state, &account.ms_refresh_token).await;
-    let summary = AccountSummary::from(&account);
-    *state.account.lock().await = Some(account);
-    Ok(summary)
-}
-
-/// Silent sign-in from the keychain on startup.
-#[tauri::command]
-pub async fn current_account(state: State<'_, AppState>) -> Result<Option<AccountSummary>> {
-    Ok(ensure_account(&state).await.ok().map(|a| AccountSummary::from(&a)))
-}
-
-#[tauri::command]
-pub async fn logout(state: State<'_, AppState>) -> Result<()> {
-    *state.account.lock().await = None;
-    delete_refresh_token(&state).await;
-    Ok(())
-}
-
-/// Fallback location when the OS keychain refuses the token (Windows Credential Manager
-/// caps secrets at ~2.5 KB). It lives in the user's own profile folder.
-fn token_file(state: &AppState) -> std::path::PathBuf {
-    state.paths.root().join("auth").join("refresh_token")
-}
-
-async fn store_refresh_token(state: &AppState, token: &str) {
-    let in_keychain = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).and_then(|e| e.set_password(token));
-    match in_keychain {
-        Ok(()) => {
-            let _ = tokio::fs::remove_file(token_file(state)).await;
-        }
-        Err(e) => {
-            tracing::warn!(error = %e, "keychain refused the refresh token, storing it in the profile folder");
-            let path = token_file(state);
-            if let Some(dir) = path.parent() {
-                let _ = tokio::fs::create_dir_all(dir).await;
-            }
-            if tokio::fs::write(&path, token).await.is_ok() {
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    let _ = tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).await;
-                }
-            }
-        }
-    }
-}
-
-async fn load_refresh_token(state: &AppState) -> Option<String> {
-    if let Ok(t) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER).and_then(|e| e.get_password()) {
-        return Some(t);
-    }
-    tokio::fs::read_to_string(token_file(state)).await.ok().map(|t| t.trim().to_string()).filter(|t| !t.is_empty())
-}
-
-async fn delete_refresh_token(state: &AppState) {
-    if let Ok(entry) = keyring::Entry::new(KEYRING_SERVICE, KEYRING_USER) {
-        let _ = entry.delete_credential();
-    }
-    let _ = tokio::fs::remove_file(token_file(state)).await;
-}
-
-async fn wait_cancelled(state: &AppState, device_code: &str) {
-    loop {
-        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        let pending = state.pending_login.lock().await;
-        if pending.as_ref().map(|p| p.device_code.as_str()) != Some(device_code) {
-            return;
-        }
-    }
-}
-
-async fn ensure_account(state: &AppState) -> Result<Account> {
-    let mut guard = state.account.lock().await;
-    let now = chrono_now();
-    if let Some(a) = guard.as_ref() {
-        if a.mc_expires_at - 300 > now {
-            return Ok(a.clone());
-        }
-    }
-    let refresh = match guard.as_ref() {
-        Some(a) => a.ms_refresh_token.clone(),
-        None => load_refresh_token(state).await.ok_or(Error::NotSignedIn)?,
-    };
-    let fresh = match state.auth().await.refresh(&refresh).await {
-        Ok(a) => a,
-        Err(Error::NotSignedIn) => {
-            // Stale token: forget it so the UI shows the sign-in button.
-            *guard = None;
-            delete_refresh_token(state).await;
-            return Err(Error::NotSignedIn);
-        }
-        Err(e) => return Err(e),
-    };
-    store_refresh_token(state, &fresh.ms_refresh_token).await;
-    *guard = Some(fresh.clone());
-    Ok(fresh)
-}
-
-fn chrono_now() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
-}
+// Accounts (sign-in, switching, profile, skins...) live in accounts.rs.
+pub(crate) use crate::accounts::ensure_account;
 
 // ------------------------------------------------------------------ launching
 
@@ -375,6 +235,15 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
     let exit_app = app.clone();
     let exit_id = id.clone();
     let instance_dir = state.paths.instance(&inst.id);
+    let session_base = crate::stats::Session {
+        start: launched_at.duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0),
+        minutes: 0,
+        account: account.uuid.clone(),
+        instance: inst.id.clone(),
+        instance_name: inst.name.clone(),
+        version: inst.game_version.clone(),
+        loader: format!("{:?}", inst.loader),
+    };
     tokio::spawn(async move {
         let code = child.wait().await.ok().and_then(|s| s.code());
         let minutes = started.elapsed().as_secs() / 60;
@@ -386,6 +255,9 @@ pub async fn launch_instance(app: AppHandle, state: State<'_, AppState>, id: Str
                 cfg.play_minutes += minutes;
                 let _ = state.instances.save(&cfg).await;
             }
+            // Account page: play time per account and the servers you joined.
+            let servers = crate::stats::servers_in_log(&instance_dir).await;
+            crate::stats::record(&state, crate::stats::Session { minutes, ..session_base }, servers).await;
         }
         if let Some(w) = exit_app.get_webview_window("main") {
             let _ = w.unminimize();

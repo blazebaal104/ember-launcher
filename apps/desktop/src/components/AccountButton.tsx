@@ -1,111 +1,85 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Check, Copy, ExternalLink, LogIn, Settings2 } from "lucide-react";
-import { api, errorCode, type DeviceCode } from "../lib/ipc";
-import { open, signInStatus } from "../lib/links";
+import { AnimatePresence, motion } from "motion/react";
+import { Check, ChevronsUpDown, UserPlus } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "../lib/ipc";
 import { useApp } from "../state";
+import { SignIn } from "./account/SignIn";
+
+function Avatar({ uuid, name, size = 32 }: { uuid: string; name: string; size?: number }) {
+  return (
+    <span className="relative grid shrink-0 place-items-center overflow-hidden rounded-chip bg-copper/20 text-[14px] font-bold text-copper" style={{ width: size, height: size }}>
+      {name.slice(0, 1).toUpperCase()}
+      <img src={`https://mc-heads.net/avatar/${uuid}/${size}`} alt="" className="absolute inset-0 size-full [image-rendering:pixelated]" onError={(e) => ((e.target as HTMLImageElement).style.display = "none")} />
+    </span>
+  );
+}
 
 /**
- * Microsoft sign-in via device code: Ember shows a short code, opens microsoft.com/link,
- * and finishes on its own once you approve in the browser. Nothing is typed into Ember.
+ * Bottom of the sidebar: who you're playing as. Click to open the Account page; the arrows
+ * switch between your accounts. Signed out, it's the Microsoft sign-in button.
  */
 export function AccountButton() {
-  const { account, setAccount, settings } = useApp();
+  const { account, setAccount, toast } = useApp();
   const navigate = useNavigate();
-  const [code, setCode] = useState<DeviceCode | null>(null);
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState<{ code: string; message: string } | null>(null);
-  const [busy, setBusy] = useState(false);
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const accounts = useQuery({ queryKey: ["accounts"], queryFn: api.accountsList, enabled: !!account });
+  const box = useRef<HTMLDivElement>(null);
 
-  const signIn = async () => {
-    setError(null);
-    setBusy(true);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => !box.current?.contains(e.target as Node) && setOpen(false);
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+
+  if (!account) return <SignIn compact onDone={setAccount} />;
+
+  const switchTo = async (uuid: string, name: string) => {
+    setOpen(false);
     try {
-      const c = await api.loginStart();
-      setCode(c);
-      await navigator.clipboard?.writeText(c.user_code).then(() => setCopied(true), () => {});
-      open(c.verification_uri);
-      const acc = await api.loginFinish();
-      signInStatus.set("ok");
-      setAccount(acc);
+      setAccount(await api.accountSwitch(uuid));
+      qc.invalidateQueries({ queryKey: ["accounts"] });
+      qc.invalidateQueries({ queryKey: ["account-details"] });
+      qc.invalidateQueries({ queryKey: ["account-stats"] });
+      toast({ title: `Playing as ${name}`, tone: "success" });
     } catch (e) {
-      const c = errorCode(e);
-      if (c === "app_not_approved") signInStatus.set("waiting_approval");
-      setError({ code: c, message: String(e) });
-    } finally {
-      setCode(null);
-      setCopied(false);
-      setBusy(false);
+      toast({ title: "Couldn't switch", body: String(e), tone: "error" });
     }
   };
 
-  const cancel = async () => {
-    await api.loginCancel();
-    setCode(null);
-  };
-
-  if (account) {
-    return (
-      <div className="flex items-center gap-3 rounded-card px-2 py-2">
-        <span className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-chip bg-copper/20 text-[14px] font-bold text-copper">
-          {account.username.slice(0, 1).toUpperCase()}
-          <img
-            src={`https://mc-heads.net/avatar/${account.uuid}/32`}
-            alt=""
-            className="absolute inset-0 size-full [image-rendering:pixelated]"
-            onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-          />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[14px] font-medium">{account.username}</div>
-          <button type="button" className="text-[12px] text-muted hover:text-text" onClick={() => api.logout().then(() => setAccount(null))}>
-            Sign out
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (settings && !settings.signInConfigured) {
-    return (
-      <button type="button" onClick={() => navigate("/settings")} className="flex w-full items-center gap-2 rounded-card border border-slate-line px-3 py-2 text-[14px] text-text hover:border-copper">
-        <Settings2 className="size-4 text-copper" aria-hidden /> Set up Microsoft sign-in
-      </button>
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-2">
-      {code && (
-        <div className="rounded-card bg-slate-surface p-3" aria-live="polite">
-          <p className="text-[13px] text-muted">Enter this code on the Microsoft page:</p>
-          <div className="mt-1 flex items-center justify-between gap-2">
-            <span className="font-pixel text-[22px] tracking-wider text-text">{code.user_code}</span>
-            <button type="button" aria-label="Copy code" onClick={() => navigator.clipboard?.writeText(code.user_code).then(() => setCopied(true))} className="rounded-chip p-1.5 text-muted hover:bg-slate-raised hover:text-text">
-              {copied ? <Check className="size-4 text-copper" /> : <Copy className="size-4" />}
-            </button>
+    <div ref={box} className="relative">
+      <div className="flex items-center gap-1 rounded-card hover:bg-slate-raised/70">
+        <button type="button" onClick={() => navigate("/account")} className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left" title="Your account">
+          <Avatar uuid={account.uuid} name={account.username} />
+          <div className="min-w-0">
+            <div className="truncate text-[14px] font-medium">{account.username}</div>
+            <div className="text-[12px] text-muted">Account</div>
           </div>
-          <div className="mt-2 flex items-center justify-between">
-            <button type="button" onClick={() => open(code.verification_uri)} className="flex items-center gap-1 text-[13px] text-copper hover:underline">
-              <ExternalLink className="size-3.5" aria-hidden /> Open {code.verification_uri.replace("https://", "")}
-            </button>
-            <button type="button" onClick={cancel} className="text-[13px] text-muted hover:text-text">Cancel</button>
-          </div>
-        </div>
-      )}
-      {error && (
-        <div className="rounded-card bg-slate-surface p-3 text-[12px] leading-snug">
-          <p className={error.code === "app_not_approved" ? "text-gold" : "text-redstone"}>{error.message}</p>
-          {["app_not_approved", "app_misconfigured", "no_client_id"].includes(error.code) && (
-            <button type="button" onClick={() => navigate("/settings")} className="mt-1.5 text-copper hover:underline">Open sign-in setup</button>
-          )}
-        </div>
-      )}
-      {!code && (
-        <button type="button" onClick={signIn} disabled={busy} className="flex items-center gap-2 rounded-card bg-copper px-3 py-2 text-[14px] font-medium text-ink-950 hover:bg-copper/90 disabled:opacity-60">
-          <LogIn className="size-4" aria-hidden /> {busy ? "Starting" : "Sign in with Microsoft"}
         </button>
-      )}
+        <button type="button" onClick={() => setOpen(!open)} className="mr-1 rounded-chip p-1.5 text-muted hover:bg-slate-line hover:text-text" aria-label="Switch account" aria-expanded={open}>
+          <ChevronsUpDown className="size-4" />
+        </button>
+      </div>
+      <AnimatePresence>
+        {open && (
+          <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }} className="glass absolute bottom-full left-0 z-50 mb-2 w-full rounded-panel p-1.5 shadow-xl">
+            {(accounts.data ?? []).map((a) => (
+              <button key={a.uuid} type="button" onClick={() => (a.active ? setOpen(false) : switchTo(a.uuid, a.username))} className="flex w-full items-center gap-2.5 rounded-card px-2 py-1.5 text-left hover:bg-slate-raised">
+                <Avatar uuid={a.uuid} name={a.username} size={24} />
+                <span className="min-w-0 flex-1 truncate text-[13px]">{a.username}</span>
+                {a.active && <Check className="size-4 text-copper" />}
+              </button>
+            ))}
+            <button type="button" onClick={() => { setOpen(false); navigate("/account"); }} className="mt-1 flex w-full items-center gap-2.5 rounded-card px-2 py-1.5 text-left text-[13px] text-muted hover:bg-slate-raised hover:text-text">
+              <UserPlus className="size-4" /> Add or manage accounts
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

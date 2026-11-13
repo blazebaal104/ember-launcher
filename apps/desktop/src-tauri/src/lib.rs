@@ -1,5 +1,7 @@
 //! Tauri shell: thin IPC layer over `launcher-core`. No game logic lives here.
+mod accounts;
 mod commands;
+mod stats;
 mod features;
 mod servers;
 mod updater;
@@ -38,11 +40,28 @@ pub fn run() {
             commands::open_instance_folder,
             commands::get_settings,
             commands::save_settings,
-            commands::login_start,
-            commands::login_cancel,
-            commands::login_finish,
-            commands::current_account,
-            commands::logout,
+            accounts::login_start,
+            accounts::login_cancel,
+            accounts::login_finish,
+            accounts::current_account,
+            accounts::logout,
+            accounts::accounts_list,
+            accounts::account_switch,
+            accounts::account_remove,
+            accounts::account_details,
+            accounts::account_upload_skin,
+            accounts::account_set_variant,
+            accounts::account_reset_skin,
+            accounts::account_set_cape,
+            accounts::account_name_check,
+            accounts::account_name_change,
+            accounts::skins_list,
+            accounts::skin_save,
+            accounts::skin_save_current,
+            accounts::skin_rename,
+            accounts::skin_delete,
+            accounts::skin_apply,
+            stats::account_stats_cmd,
             commands::launch_instance,
             commands::install_files,
             commands::curseforge_request,

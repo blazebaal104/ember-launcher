@@ -37,6 +37,7 @@ pub mod profiles;
 pub mod rules;
 pub mod server;
 pub mod server_world;
+pub mod mcapi;
 pub mod overlay_remote;
 pub mod update;
 pub mod settings;

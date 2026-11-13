@@ -25,5 +25,8 @@ tracing.workspace = true
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 url = "2"
+base64 = "0.22"
+sha2 = "0.10"
+hex = "0.4"
 sysinfo = { version = "0.33", default-features = false, features = ["system"] }
 

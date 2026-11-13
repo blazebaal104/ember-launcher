@@ -18,11 +18,11 @@ pub enum Error {
     Auth(String),
     #[error("this Microsoft account does not own Minecraft: Java Edition")]
     NoEntitlement,
-    #[error("Microsoft sign-in isn't set up yet: add your Azure app's client ID in Settings")]
+    #[error("This build of Ember can't sign in yet (no Microsoft app ID). Update Ember to the latest version")]
     NoClientId,
     #[error("you're not signed in: sign in with your Microsoft account first")]
     NotSignedIn,
-    #[error("Mojang hasn't approved this Azure app for Minecraft sign-in yet. Submit the review form (Settings has the link) and try again once you get the approval email. It can take up to 24 hours after approval to start working")]
+    #[error("Minecraft's servers refused this sign-in app. Try again in a little while; if it keeps happening, update Ember")]
     AppNotApproved,
     #[error("Azure app setup problem: {0}")]
     AppMisconfigured(String),

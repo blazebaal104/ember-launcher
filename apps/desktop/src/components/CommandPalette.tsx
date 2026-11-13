@@ -70,7 +70,7 @@ export function CommandPalette() {
       { id: "theme", group: "Actions", label: appearance.theme === "calcite" ? "Switch to dark theme" : "Switch to light theme", icon: appearance.theme === "calcite" ? Moon : Sun, run: () => setAppearance({ theme: appearance.theme === "calcite" ? "deepslate" : "calcite" }) },
       { id: "s-appearance", group: "Settings", label: "Appearance: theme, accent, glass, animations", icon: Palette, run: go("/settings?tab=appearance") },
       { id: "s-profiles", group: "Settings", label: "Game profiles: keybinds, FOV, video", icon: Sparkles, run: go("/settings?tab=profiles") },
-      { id: "s-account", group: "Settings", label: "Microsoft account & sign-in", icon: Settings, run: go("/settings?tab=account") },
+      { id: "s-account", group: "Settings", label: "Account: skins, capes, name, stats, switch account", icon: Settings, run: go("/account") },
       { id: "s-launcher", group: "Settings", label: "Launcher: memory, Java, behaviour", icon: Settings, run: go("/settings?tab=launcher") },
     ];
     const filtered = q.trim() ? local.filter((i) => matches(q, `${i.label} ${i.hint ?? ""}`)) : local.filter((i) => i.group !== "Settings").slice(0, 12);

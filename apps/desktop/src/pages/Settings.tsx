@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { checkForUpdates } from "../components/UpdateDialog";
-import { Check, Cpu, ExternalLink, Gamepad2, Info, Paintbrush, RefreshCw, Rocket, Sparkles, User } from "lucide-react";
+import { Check, Cpu, ExternalLink, Gamepad2, Info, Paintbrush, RefreshCw, Rocket, Sparkles } from "lucide-react";
 import { useApp } from "../state";
 import { ACCENTS, THEMES, transitionProps, type Backdrop } from "../lib/appearance";
 import { api } from "../lib/ipc";
@@ -11,10 +11,9 @@ import { useProfiles, useSystemInfo } from "../lib/queries";
 import { open } from "../lib/links";
 import { Button, Field, Glass, Segmented, Slider, Tabs, Toggle, inputClass } from "../components/ui";
 import { ProfilesSection } from "../components/settings/ProfilesSection";
-import { AccountSection } from "../components/settings/AccountSection";
 import logo from "../assets/logo-glyph.svg";
 
-type Tab = "appearance" | "launcher" | "profiles" | "account" | "about";
+type Tab = "appearance" | "launcher" | "profiles" | "about";
 
 export function Settings() {
   const [params, setParams] = useSearchParams();
@@ -31,7 +30,6 @@ export function Settings() {
           { id: "appearance", label: "Appearance", icon: Paintbrush },
           { id: "launcher", label: "Launcher", icon: Rocket },
           { id: "profiles", label: "Game profiles", icon: Gamepad2 },
-          { id: "account", label: "Account", icon: User },
           { id: "about", label: "About", icon: Info },
         ]}
       />
@@ -40,7 +38,6 @@ export function Settings() {
           {tab === "appearance" && <AppearanceSection />}
           {tab === "launcher" && <LauncherSection />}
           {tab === "profiles" && <ProfilesSection />}
-          {tab === "account" && <Glass className="p-6"><AccountSection /></Glass>}
           {tab === "about" && <AboutSection />}
         </motion.div>
       </AnimatePresence>
