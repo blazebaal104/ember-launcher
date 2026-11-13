@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.7.1
+- **Account page: the 3D skin preview now shows your skin.** It was being drawn at zero size, so the panel looked empty.
+- The preview starts in a three-quarter view with room around the model, on a checkered backdrop, and the name tag uses a Minecraft-style font.
+- New buttons on the preview: **pause / play** the animation and **show / hide the outer layer** (hat, jacket, sleeves).
+
 ## 0.7.0
 
 ### A real Account page

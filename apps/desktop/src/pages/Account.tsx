@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  BarChart3, Check, Clock, Copy, Crown, Gamepad2, History, ImagePlus, LogOut, Pencil, Play, RefreshCw, RotateCcw, Save,
+  BarChart3, Check, Layers, Pause, Clock, Copy, Crown, Gamepad2, History, ImagePlus, LogOut, Pencil, Play, RefreshCw, RotateCcw, Save,
   Server, Shield, ShieldAlert, Shirt, Trash2, UserPlus, UserRound, Users, X,
 } from "lucide-react";
 import { useApp } from "../state";
@@ -48,6 +48,8 @@ export function Account() {
   const [pose, setPose] = useState<Pose>("idle");
   const [back, setBack] = useState<Back>("cape");
   const [spin, setSpin] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [layer, setLayer] = useState(true);
   const [resetKey, setResetKey] = useState(0);
   const [busy, setBusy] = useState(false);
 
@@ -90,9 +92,12 @@ export function Account() {
     <div className="mx-auto grid max-w-7xl gap-5 px-6 pb-10 pt-2 lg:grid-cols-[340px_1fr]">
       {/* ------------------------------------------------ 3D preview */}
       <Glass className="sticky top-2 flex h-[calc(100vh-110px)] min-h-[520px] flex-col overflow-hidden p-0 lg:self-start">
-        <div className="relative flex-1 bg-[radial-gradient(ellipse_at_50%_40%,rgb(var(--accent-rgb,79_184_160)/0.16),transparent_70%)]">
+        <div
+          className="relative m-3 flex-1 overflow-hidden rounded-panel border border-slate-line/60"
+          style={{ backgroundColor: "rgb(255 255 255 / 0.02)", backgroundImage: "linear-gradient(45deg, rgb(255 255 255 / 0.04) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.04) 75%), linear-gradient(45deg, rgb(255 255 255 / 0.04) 25%, transparent 25%, transparent 75%, rgb(255 255 255 / 0.04) 75%)", backgroundSize: "28px 28px", backgroundPosition: "0 0, 14px 14px" }}
+        >
           {skin ? (
-            <SkinViewer skin={skin} slim={slim} cape={preview ? null : d?.capeData} back={back} pose={pose} name={preview ? preview.name : name} autoRotate={spin} resetKey={resetKey} className="absolute inset-0" />
+            <SkinViewer skin={skin} slim={slim} cape={preview ? null : d?.capeData} back={back} pose={pose} name={preview ? preview.name : name} autoRotate={spin} resetKey={resetKey} paused={paused} outerLayer={layer} className="absolute inset-0" />
           ) : (
             <div className="absolute inset-0 grid place-items-center">{details.isLoading ? <Skeleton className="h-64 w-32" /> : <p className="px-6 text-center text-[14px] text-muted">Your skin couldn't be loaded.</p>}</div>
           )}
@@ -100,6 +105,16 @@ export function Account() {
             <div className="absolute inset-x-3 top-3 flex items-center justify-between rounded-card bg-slate-surface/90 px-3 py-2 text-[13px]">
               <span>Previewing <b>{preview.name}</b></span>
               <button type="button" onClick={() => setPreview(null)} className="text-muted hover:text-text" aria-label="Stop previewing"><X className="size-4" /></button>
+            </div>
+          )}
+          {skin && (
+            <div className="absolute right-2.5 top-2.5 flex flex-col gap-2" style={{ top: preview ? 52 : undefined }}>
+              <button type="button" onClick={() => setPaused(!paused)} className="grid size-9 place-items-center rounded-card bg-slate-raised/90 text-text shadow hover:bg-slate-line" title={paused ? "Play animation" : "Pause animation"} aria-label={paused ? "Play animation" : "Pause animation"}>
+                {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
+              </button>
+              <button type="button" onClick={() => setLayer(!layer)} className={`grid size-9 place-items-center rounded-card shadow ${layer ? "bg-slate-raised/90 text-text hover:bg-slate-line" : "bg-copper text-on-accent"}`} title={layer ? "Hide outer layer (hat, jacket)" : "Show outer layer"} aria-label="Toggle outer skin layer">
+                <Layers className="size-4" />
+              </button>
             </div>
           )}
           <p className="pointer-events-none absolute bottom-2 w-full text-center text-[11px] text-muted">Drag to turn · Scroll to zoom</p>

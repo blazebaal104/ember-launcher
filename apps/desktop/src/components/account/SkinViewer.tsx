@@ -17,6 +17,8 @@ export function SkinViewer({
   name,
   autoRotate = false,
   resetKey = 0,
+  paused = false,
+  outerLayer = true,
   className = "",
 }: {
   skin: string | null | undefined;
@@ -28,6 +30,9 @@ export function SkinViewer({
   autoRotate?: boolean;
   /** Change to put the camera back where it started. */
   resetKey?: number;
+  paused?: boolean;
+  /** Show the second skin layer (hat, jacket, sleeves...). */
+  outerLayer?: boolean;
   className?: string;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -39,12 +44,14 @@ export function SkinViewer({
     if (!canvas.current || !wrap.current) return;
     const v = new skinview3d.SkinViewer({
       canvas: canvas.current,
-      width: wrap.current.clientWidth,
-      height: wrap.current.clientHeight,
+      width: Math.max(1, wrap.current.clientWidth),
+      height: Math.max(1, wrap.current.clientHeight),
       preserveDrawingBuffer: false,
     });
-    v.fov = 50;
-    v.zoom = 0.82;
+    v.fov = 45;
+    v.zoom = 0.62;
+    // a three-quarter view, like the official launcher
+    v.playerWrapper.rotation.y = -0.5;
     v.controls.enableRotate = true;
     v.controls.enableZoom = true;
     v.controls.enablePan = false;
@@ -52,7 +59,8 @@ export function SkinViewer({
     v.cameraLight.intensity = 0.6;
     viewer.current = v;
     const ro = new ResizeObserver(() => {
-      if (wrap.current) v.setSize(wrap.current.clientWidth, wrap.current.clientHeight);
+      const w = wrap.current?.clientWidth ?? 0, h = wrap.current?.clientHeight ?? 0;
+      if (w > 0 && h > 0) v.setSize(w, h);
     });
     ro.observe(wrap.current);
     return () => {
@@ -91,7 +99,7 @@ export function SkinViewer({
   useEffect(() => {
     const v = viewer.current;
     if (!v) return;
-    v.nameTag = name ? new skinview3d.NameTagObject(name, { textStyle: "white" }) : null;
+    v.nameTag = name ? new skinview3d.NameTagObject(name, { textStyle: "white", font: "48px \"Pixelify Sans\", \"Schibsted Grotesk\", sans-serif", repaintAfterLoaded: true }) : null;
   }, [name]);
 
   useEffect(() => {
@@ -101,13 +109,24 @@ export function SkinViewer({
 
   useEffect(() => {
     const v = viewer.current;
+    if (v?.animation) v.animation.paused = paused;
+  }, [paused, pose]);
+
+  useEffect(() => {
+    viewer.current?.playerObject.skin.setOuterLayerVisible(outerLayer);
+  }, [outerLayer, skin]);
+
+  useEffect(() => {
+    const v = viewer.current;
     if (!v || resetKey === 0) return;
     v.resetCameraPose();
-    v.zoom = 0.82;
+    v.zoom = 0.62;
   }, [resetKey]);
 
   return (
-    <div ref={wrap} className={`relative cursor-grab active:cursor-grabbing ${className}`}>
+    // Positioned by the caller (e.g. "absolute inset-0"); never mix with "relative", which
+    // would collapse the box to 0 px tall (the canvas inside is absolutely positioned).
+    <div ref={wrap} className={`cursor-grab active:cursor-grabbing ${className.includes("absolute") ? className : `relative h-full w-full ${className}`}`}>
       <canvas ref={canvas} className="absolute inset-0 size-full" aria-label="3D preview of your skin: drag to rotate, scroll to zoom" />
     </div>
   );
