@@ -137,6 +137,8 @@ jobs:
               done ) &
             gradle runClient $GARGS "-Pmc_range=$RANGE" -Pselftest --stacktrace >> "$LOG" 2>&1
           ' || true
+          # Screenshots the game saved itself (more reliable than grabbing the virtual screen).
+          for f in run/ember-shots/*.png; do [ -f "$f" ] && cp "$f" "$GITHUB_WORKSPACE/shot-$MC-$(basename "$f")"; done
           tail -n 40 "$LOG"
           if grep -q "EMBER_SELFTEST_OK" "$LOG" && grep -q "EMBER_SELFTEST_UI_OK" "$LOG"; then echo "SELFTEST PASSED"; else echo "SELFTEST FAILED"; exit 1; fi
 

@@ -35,6 +35,8 @@ public final class Compat {
 
     public static final String MOD_ID = Util.MOD_ID;
     public static final int UNBOUND = -1;
+    /** CI screenshots by reading the OpenGL front buffer. */
+    public static final boolean GL_SCREENSHOTS = true;
     public static final int KEY_RSHIFT = InputConstants.KEY_RSHIFT;
     public static final int KEY_C = InputConstants.KEY_C;
     public static final int KEY_LALT = InputConstants.KEY_LALT;

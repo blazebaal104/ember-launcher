@@ -108,6 +108,31 @@ public final class EmberOverlay implements ClientModInitializer {
      * Opens every kind of menu page so a rendering bug crashes the CI run, and prints
      * EMBER_SHOT markers the workflow uses to take screenshots of each page.
      */
+    /** CI only: save what's on screen (OpenGL front buffer) to run/ember-shots/<name>.png. */
+    private static void shot(Minecraft mc, String name) {
+        System.out.println("EMBER_SHOT " + name);
+        if (!Compat.GL_SCREENSHOTS) return;
+        try {
+            int w = mc.getWindow().getWidth(), h = mc.getWindow().getHeight();
+            java.nio.ByteBuffer buf = org.lwjgl.BufferUtils.createByteBuffer(w * h * 4);
+            org.lwjgl.opengl.GL30.glBindFramebuffer(org.lwjgl.opengl.GL30.GL_READ_FRAMEBUFFER, 0);
+            org.lwjgl.opengl.GL11.glReadBuffer(org.lwjgl.opengl.GL11.GL_FRONT);
+            org.lwjgl.opengl.GL11.glPixelStorei(org.lwjgl.opengl.GL11.GL_PACK_ALIGNMENT, 1);
+            org.lwjgl.opengl.GL11.glReadPixels(0, 0, w, h, org.lwjgl.opengl.GL11.GL_RGBA, org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE, buf);
+            var img = new java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_RGB);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++) {
+                    int i = ((h - 1 - y) * w + x) * 4;
+                    img.setRGB(x, y, ((buf.get(i) & 0xFF) << 16) | ((buf.get(i + 1) & 0xFF) << 8) | (buf.get(i + 2) & 0xFF));
+                }
+            java.nio.file.Path dir = mc.gameDirectory.toPath().resolve("ember-shots");
+            java.nio.file.Files.createDirectories(dir);
+            javax.imageio.ImageIO.write(img, "png", dir.resolve(name + ".png").toFile());
+        } catch (Throwable e) {
+            System.out.println("EMBER_SHOT_FAILED " + e);
+        }
+    }
+
     private static void selftest(Minecraft mc, int t) {
         switch (t) {
             case 40 -> {
@@ -116,17 +141,19 @@ public final class EmberOverlay implements ClientModInitializer {
                 FeatureRegistry.get("keystrokes").setEnabled(true);
                 Compat.setScreen(mc, new OverlayScreen());
             }
-            case 80 -> System.out.println("EMBER_SHOT grid");
+            case 80 -> shot(mc, "grid");
             case 100 -> Compat.setScreen(mc, new OverlayScreen(FeatureRegistry.get("crosshair").isAvailable() ? FeatureRegistry.get("crosshair") : FeatureRegistry.get("zoom")));
-            case 140 -> System.out.println("EMBER_SHOT details");
+            case 140 -> shot(mc, "details");
             case 160 -> Compat.setScreen(mc, new OverlayScreen(FeatureRegistry.get("armor")));
-            case 200 -> System.out.println("EMBER_SHOT armor");
+            case 200 -> shot(mc, "armor");
             case 220 -> Compat.setScreen(mc, new OverlayScreen(FeatureRegistry.get("macros")));
-            case 260 -> System.out.println("EMBER_SHOT macros");
+            case 260 -> shot(mc, "macros");
             case 280 -> Compat.setScreen(mc, new HudEditorScreen(null, null));
-            case 310 -> System.out.println("EMBER_SHOT editor");
+            case 310 -> shot(mc, "editor");
             case 315 -> Compat.setScreen(mc, new OverlayScreen(FeatureRegistry.get("potions")));
-            case 320 -> Compat.setScreen(mc, new WorldMapScreen());
+            case 322 -> shot(mc, "potions");
+            case 324 -> Compat.setScreen(mc, new WorldMapScreen());
+            case 328 -> shot(mc, "worldmap");
             case 330 -> {
                 Compat.setScreen(mc, null);
                 System.out.println("EMBER_SELFTEST_UI_OK");

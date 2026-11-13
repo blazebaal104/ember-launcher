@@ -42,6 +42,8 @@ public final class Compat {
     public static final String MOD_ID = Util.MOD_ID;
     /** Vanilla HUD pieces can be hidden/replaced (Fabric's HUD element registry). */
     public static final boolean CAN_CHANGE_VANILLA_HUD = true;
+    /** CI screenshots by reading the OpenGL front buffer (26.x may render with Vulkan: off). */
+    public static final boolean GL_SCREENSHOTS = false;
     public static final int UNBOUND = -1;
     public static final int KEY_RSHIFT = InputConstants.KEY_RSHIFT;
     public static final int KEY_C = InputConstants.KEY_C;
