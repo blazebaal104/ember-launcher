@@ -113,7 +113,10 @@ jobs:
       - name: Mapped signatures
         if: contains(github.ref_name, 'introspect') && steps.cache.outputs.cache-hit != 'true'
         run: |
-          JAR=$(find ~/.gradle/caches/fabric-loom ${{ steps.cfg.outputs.dir }}/.gradle/loom-cache -name "minecraft-*.jar" 2>/dev/null | grep -v sources | xargs ls -S 2>/dev/null | head -1)
+          JAR=""
+          for j in $(find ~/.gradle/caches/fabric-loom ${{ steps.cfg.outputs.dir }}/.gradle/loom-cache -name "*.jar" 2>/dev/null | grep -v sources); do
+            if unzip -l "$j" 2>/dev/null | grep -q "net/minecraft/client/renderer/texture/DynamicTexture.class"; then JAR="$j"; break; fi
+          done
           echo "jar: $JAR" > "overlay-$MC-javap.log"
           for c in net.minecraft.client.renderer.texture.DynamicTexture com.mojang.blaze3d.platform.NativeImage net.minecraft.client.renderer.texture.TextureManager net.minecraft.client.renderer.texture.AbstractTexture net.minecraft.client.gui.GuiGraphics net.minecraft.client.gui.GuiGraphicsExtractor; do
             echo "===== $c" >> "overlay-$MC-javap.log"

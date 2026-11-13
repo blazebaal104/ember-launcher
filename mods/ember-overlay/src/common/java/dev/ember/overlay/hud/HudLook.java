@@ -34,7 +34,7 @@ public final class HudLook {
         key = new Setting.Key("show_key", "Key", mapping);
         key.showIf(() -> show.v != 0);
         s.add(key);
-        size = new Setting.Slider("size", "Size", 50, 200, 10, 100, v -> v + "%").help("You can also scroll over it in Edit HUD layout.");
+        size = new Setting.Slider("size", "Size", 50, 250, 5, 100, v -> v + "%").help("You can also drag its corner in Edit HUD layout.");
         s.add(size);
         text = (parts & TEXT) != 0 ? s_add(f, new Setting.Color("text_color", "Text colour", textColor)) : null;
         background = (parts & BACKGROUND) != 0 ? s_add(f, new Setting.Bool("background", "Background", true).help("Dark plate behind it so it's readable anywhere.")) : null;

@@ -56,7 +56,6 @@ public final class MapData {
     private static final Map<Long, Long> scannedAt = new HashMap<>();
     private static String world;
     private static boolean dirty, caveMode;
-    private static int cursor;
     private static long lastSave;
     /** Bumped whenever terrain changes, so views know to rebuild. */
     public static volatile int version;
@@ -132,26 +131,26 @@ public final class MapData {
         caveMode = caveInNether && w.endsWith("the_nether");
         int pcx = mc.player.getBlockX() >> 4, pcz = mc.player.getBlockZ() >> 4;
         long now = System.currentTimeMillis();
-        int budget = caveMode ? 1 : 3, steps = 0;
-        while (budget > 0 && steps++ < SPIRAL.length) {
-            int[] o = SPIRAL[cursor];
-            cursor = (cursor + 1) % SPIRAL.length;
+        // Spend at most ~1.5 ms per tick (3% of a tick): the area around you fills in within a
+        // second or two without costing FPS. Always restart from the nearest chunks.
+        long deadline = System.nanoTime() + 1_500_000;
+        for (int i = 0; i < SPIRAL.length && System.nanoTime() < deadline; i++) {
+            int[] o = SPIRAL[i];
             int cx = pcx + o[0], cz = pcz + o[1];
             if (!mc.level.hasChunk(cx, cz)) continue;
             long k = key(cx, cz);
             Long at = scannedAt.get(k);
-            long maxAge = (Math.abs(o[0]) <= 1 && Math.abs(o[1]) <= 1) ? 2_000 : 20_000;
+            long maxAge = (Math.abs(o[0]) <= 1 && Math.abs(o[1]) <= 1) ? 1_000 : 15_000;
             if (at != null && now - at < maxAge) continue;
-            scan(mc, cx, cz);
-            scannedAt.put(k, now);
-            budget--;
+            // only count a chunk as done when (nearly) every column found its colour; the client
+            // sometimes has a chunk before its height data, so try again shortly
+            if (scan(mc, cx, cz)) scannedAt.put(k, now);
+            else scannedAt.put(k, now - maxAge + 500);
         }
-        // keep the cursor near the player: restart the spiral every second
-        if (mc.level.getGameTime() % 20 == 0) cursor = 0;
         if (dirty && now - lastSave > 60_000) save();
     }
 
-    private static void scan(Minecraft mc, int cx, int cz) {
+    private static boolean scan(Minecraft mc, int cx, int cz) {
         var level = mc.level;
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         int[] heights = new int[16 * 17];
@@ -170,7 +169,7 @@ public final class MapData {
                     y = level.getHeight(Heightmap.Types.WORLD_SURFACE, x, z) - 1;
                 }
                 int id = 0, depth = 0;
-                for (int i = 0; i < 24; i++) {
+                for (int i = 0; i < 64; i++) {
                     BlockState st = level.getBlockState(pos.set(x, y, z));
                     MapColor mcol = st.getMapColor(level, pos);
                     if (mcol == MapColor.WATER) {
@@ -192,10 +191,14 @@ public final class MapData {
             }
         }
         byte[] out = chunks.computeIfAbsent(key(cx, cz), k -> new byte[256]);
+        int missing = 0;
         for (int dz = 0; dz < 16; dz++) {
             for (int dx = 0; dx < 16; dx++) {
                 int id = ids[dz * 16 + dx];
-                if (id == 0) continue;
+                if (id == 0) {
+                    missing++;
+                    continue;
+                }
                 int h = heights[(dz + 1) * 16 + dx], north = heights[dz * 16 + dx];
                 int shade;
                 if (id == MapColor.WATER.id) shade = h > -8 ? 2 : h > -20 ? 1 : 0;
@@ -208,6 +211,7 @@ public final class MapData {
             }
         }
         version++;
+        return missing < 8;
     }
 
     // ------------------------------------------------------------------ storage

@@ -26,7 +26,9 @@ public final class HudEditorScreen extends EmberScreen {
     private final Screen parent;
     private final Feature focus;
     private final Ui ui = new Ui();
-    private Feature dragging;
+    private Feature dragging, resizing;
+    private float resizeStartScale;
+    private int resizeStartX;
     private int grabX, grabY;
     private boolean guideX, guideY;
 
@@ -78,9 +80,27 @@ public final class HudEditorScreen extends EmberScreen {
         return null;
     }
 
+    /** The little square on a module's bottom-right corner that resizes it. */
+    private boolean onHandle(Feature f, double x, double y) {
+        if (((HudModule) f).look() == null) return false;
+        int[] r = rect(f);
+        int hx = r[0] + r[2] + 2, hy = r[1] + r[3] + 2;
+        return x >= hx - 5 && x <= hx + 2 && y >= hy - 5 && y <= hy + 2;
+    }
+
     @Override
     protected boolean onMousePress(double x, double y, int button) {
         if (ui.press(x, y)) return true;
+        if (button == 0) {
+            for (Feature f : modules()) {
+                if (onHandle(f, x, y)) {
+                    resizing = f;
+                    resizeStartScale = scaleOf(f);
+                    resizeStartX = (int) x;
+                    return true;
+                }
+            }
+        }
         Feature f = under(x, y);
         if (f == null) return false;
         if (button == 1) {
@@ -99,6 +119,7 @@ public final class HudEditorScreen extends EmberScreen {
     @Override
     protected void onMouseRelease(double x, double y, int button) {
         dragging = null;
+        resizing = null;
         ui.release();
     }
 
@@ -142,6 +163,18 @@ public final class HudEditorScreen extends EmberScreen {
     protected void drawBackdrop(Gfx g, int mouseX, int mouseY) {
         ui.begin(mouseX, mouseY);
         if (dragging != null) move(mouseX, mouseY);
+        if (resizing != null) {
+            // keep the top-left corner fixed and size by how far the handle moved
+            int[] r = rect(resizing);
+            float base = Math.max(8, resizing.lastW * resizeStartScale);
+            float scale = resizeStartScale * (base + (mouseX - resizeStartX)) / base;
+            HudLook l = ((HudModule) resizing).look();
+            l.size.set(Math.round(scale * 100));
+            float ns = l.scale();
+            int w = Math.round(resizing.lastW * ns), h = Math.round(resizing.lastH * ns);
+            resizing.posX = width - w <= 0 ? 0 : Math.max(0, Math.min(1, r[0] / (float) (width - w)));
+            resizing.posY = height - h <= 0 ? 0 : Math.max(0, Math.min(1, r[1] / (float) (height - h)));
+        }
         g.fill(0, 0, width, height, 0x30000000);
         // faint grid helps line things up
         for (int x = 0; x < width; x += 20) g.fill(x, 0, x + 1, height, 0x0CFFFFFF);
@@ -152,12 +185,19 @@ public final class HudEditorScreen extends EmberScreen {
         if (minecraft.player != null) HudRenderer.drawAll(g, minecraft, true);
 
         List<Feature> list = modules();
-        Feature hov = dragging != null ? dragging : under(mouseX, mouseY);
+        Feature hov = dragging != null ? dragging : resizing != null ? resizing : under(mouseX, mouseY);
         for (Feature f : list) {
             int[] r = rect(f);
             boolean active = f == hov || f == focus;
             if (active) Draw.round(g, r[0] - 2, r[1] - 2, r[0] + r[2] + 2, r[1] + r[3] + 2, 2, Draw.withAlpha(Theme.ACCENT, 40));
             Draw.outline(g, r[0] - 2, r[1] - 2, r[0] + r[2] + 2, r[1] + r[3] + 2, 2, active ? Theme.ACCENT : 0x70FFFFFF);
+            if (((HudModule) f).look() != null) {
+                // resize handle
+                int hx = r[0] + r[2] + 2, hy = r[1] + r[3] + 2;
+                boolean hh = onHandle(f, mouseX, mouseY) || f == resizing;
+                g.fill(hx - 5, hy - 5, hx + 2, hy + 2, hh ? 0xFFFFFFFF : active ? Theme.ACCENT : 0xB0FFFFFF);
+                g.fill(hx - 4, hy - 4, hx + 1, hy + 1, hh ? Theme.ACCENT : 0xFF15171C);
+            }
             if (active) {
                 String label = f.name + "  " + Math.round(scaleOf(f) * 100) + "%";
                 int lw = font.width(label) + 8, ly = r[1] - 15 < 0 ? r[1] + r[3] + 4 : r[1] - 15;
@@ -170,7 +210,7 @@ public final class HudEditorScreen extends EmberScreen {
         // help pill
         String help = list.isEmpty()
                 ? "Turn on a HUD module in the menu first, then place it here."
-                : "Drag to move  ·  Scroll to resize  ·  Right-click to reset";
+                : "Drag to move  ·  Drag the corner or scroll to resize  ·  Right-click to reset";
         int hw = font.width(help) + 20, hx = (width - hw) / 2, hy = 8;
         Draw.round(g, hx, hy, hx + hw, hy + 18, 6, Draw.withAlpha(Theme.BASE, 230));
         Draw.outline(g, hx, hy, hx + hw, hy + 18, 6, Draw.withAlpha(Theme.LINE, 255));

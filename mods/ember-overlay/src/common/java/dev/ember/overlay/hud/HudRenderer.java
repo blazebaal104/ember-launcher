@@ -69,5 +69,64 @@ public final class HudRenderer {
             f.lastH = TRACKER.height();
             if (fx < 0) column += Math.round(used * s);
         }
+        if (!editor) placeNew(modules, sw, sh);
+    }
+
+    // ------------------------------------------------------------------ automatic placement
+
+    private static boolean overlaps(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh) {
+        return ax < bx + bw && bx < ax + aw && ay < by + bh && by < ay + ah;
+    }
+
+    /**
+     * A module that was just turned on (no saved position) is given a fixed spot: where it
+     * appeared if that's free, otherwise the nearest spot along the screen edges that doesn't
+     * cover another module or the hotbar.
+     */
+    private static void placeNew(List<HudModule> modules, int sw, int sh) {
+        for (HudModule m : modules) {
+            if (!(m instanceof Feature f) || !m.positionable() || f.posX >= 0 || f.lastW <= 0 || f.lastH <= 0) continue;
+            HudLook look = m.look();
+            float s = look == null ? 1f : look.scale();
+            int w = Math.round(f.lastW * s), h = Math.round(f.lastH * s);
+            int bestX = f.lastX, bestY = f.lastY;
+            if (blocked(f, modules, bestX, bestY, w, h, sw, sh)) {
+                long bestD = Long.MAX_VALUE;
+                int[][] edges = {{4, -1}, {sw - w - 4, -1}, {-1, 4}, {-1, sh - h - 4}};
+                for (int[] e : edges) {
+                    int steps = e[0] >= 0 ? sh : sw;
+                    for (int t = 4; t + (e[0] >= 0 ? h : w) <= steps - 4; t += 2) {
+                        int x = e[0] >= 0 ? e[0] : t, y = e[0] >= 0 ? t : e[1];
+                        if (x < 0 || y < 0) continue;
+                        long d = (long) (x - f.lastX) * (x - f.lastX) + (long) (y - f.lastY) * (y - f.lastY);
+                        if (d >= bestD || blocked(f, modules, x, y, w, h, sw, sh)) continue;
+                        bestD = d;
+                        bestX = x;
+                        bestY = y;
+                    }
+                }
+            }
+            f.posX = sw - w <= 0 ? 0 : Math.max(0, Math.min(1, bestX / (float) (sw - w)));
+            f.posY = sh - h <= 0 ? 0 : Math.max(0, Math.min(1, bestY / (float) (sh - h)));
+            f.lastX = bestX;
+            f.lastY = bestY;
+            dev.ember.overlay.core.Config.save();
+        }
+    }
+
+    private static boolean blocked(Feature self, List<HudModule> modules, int x, int y, int w, int h, int sw, int sh) {
+        // hotbar, health and hunger
+        if (overlaps(x, y, w, h, sw / 2 - 96, sh - 42, 192, 42)) return true;
+        for (HudModule o : modules) {
+            if (o == self || !(o instanceof Feature of) || !o.positionable() || of.lastW <= 0) continue;
+            if (of.posX < 0 && of != self) {
+                // not placed yet either: it will find its own spot
+                continue;
+            }
+            HudLook l = o.look();
+            float s = l == null ? 1f : l.scale();
+            if (overlaps(x, y, w, h, of.lastX - 2, of.lastY - 2, Math.round(of.lastW * s) + 4, Math.round(of.lastH * s) + 4)) return true;
+        }
+        return false;
     }
 }
