@@ -4,6 +4,7 @@
 - **Ember speaks Italian.** The first time Ember starts it asks for your language (English or Italiano) before the tour, and the whole launcher follows it: menus, pages, settings, buttons, messages, dates.
 - Change the language any time in **Settings → Launcher** or **Settings → About**. Ember reloads its window to switch.
 - Existing installs are asked once after updating.
+- **Signing in now works on any computer.** The installer includes Ember's Microsoft sign-in setup, so friends can sign in straight away.
 - Not translated yet: the in-game menu, and some error messages that come straight from Minecraft or Microsoft.
 
 ## 0.7.1

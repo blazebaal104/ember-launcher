@@ -84,8 +84,8 @@ jobs:
         env:
           EMBER_BUILD: ${{ github.run_number }}
           # The Mojang-approved Azure app (public client id, not a secret): sign-in works for
-          # everyone without setup. Repository variable EMBER_MSA_CLIENT_ID.
-          EMBER_MSA_CLIENT_ID: ${{ vars.EMBER_MSA_CLIENT_ID }}
+          # everyone without setup. A public client id (not a secret); the repository variable overrides it.
+          EMBER_MSA_CLIENT_ID: ${{ vars.EMBER_MSA_CLIENT_ID || 'b2bd8230-6d03-458f-bfdd-8b9c5a0963f6' }}
         run: npm run tauri build 2>&1 | tee ../../win-build.log; exit ${PIPESTATUS[0]}
       - uses: actions/upload-artifact@v4
         with:
