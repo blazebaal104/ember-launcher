@@ -11,6 +11,7 @@ import { open } from "../lib/links";
 import { compact, ago } from "../lib/format";
 import { Badge, Button, IconButton, Skeleton, Tabs, inputClass } from "./ui";
 import { useQueryClient } from "@tanstack/react-query";
+import { tr } from "../lib/i18n";
 
 type Tab = "about" | "gallery" | "versions";
 
@@ -80,19 +81,19 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
   const toggleFav = async () => {
     const list = await api.toggleFavorite({ source: ref.source, id: ref.id, slug: ref.slug, title: ref.title, iconUrl: ref.iconUrl, category, description: ref.description });
     qc.setQueryData(["favorites"], list);
-    toast({ title: isFav ? "Removed from favorites" : "Added to favorites", tone: "info" });
+    toast({ title: isFav ? tr("Removed from favorites") : tr("Added to favorites"), tone: "info" });
   };
 
   const install = async () => {
     setBusy(true);
-    const t = toast({ title: `Installing ${ref.title}`, tone: "progress" });
+    const t = toast({ title: tr("Installing {title}", { title: ref.title }), tone: "progress" });
     try {
       const summary = await installProject(category, { id: ref.id, slug: ref.slug, title: ref.title, iconUrl: ref.iconUrl }, { instance, server: pluginServers.find((s) => s.id === serverId), world });
-      toast({ title: `${ref.title} installed`, body: summary, tone: "success" });
+      toast({ title: tr("{title} installed", { title: ref.title }), body: summary, tone: "success" });
       if (category === "modpacks") refresh();
       qc.invalidateQueries({ queryKey: ["content"] });
     } catch (e) {
-      toast({ title: `Couldn't install ${ref.title}`, body: e instanceof Error ? e.message : String(e), tone: "error" });
+      toast({ title: tr("Couldn't install {title}", { title: ref.title }), body: e instanceof Error ? e.message : String(e), tone: "error" });
     } finally {
       setBusy(false);
       dismiss(t);
@@ -105,28 +106,28 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
 
   const installTargetUi =
     category === "modpacks" ? (
-      <p className="text-[13px] text-muted">Creates a new instance with everything the pack needs.</p>
+      <p className="text-[13px] text-muted">{tr("Creates a new instance with everything the pack needs.")}</p>
     ) : category === "plugins" ? (
       pluginServers.length ? (
-        <select aria-label="Server" value={serverId} onChange={(e) => setServerId(e.target.value)} className={inputClass}>
-          {pluginServers.map((s) => <option key={s.id} value={s.id}>{s.name} (Paper {s.gameVersion})</option>)}
+        <select aria-label={tr("Server")} value={serverId} onChange={(e) => setServerId(e.target.value)} className={inputClass}>
+          {pluginServers.map((s) => <option key={s.id} value={s.id}>{tr("{name} (Paper {gameVersion})", { name: s.name, gameVersion: s.gameVersion })}</option>)}
         </select>
       ) : (
-        <p className="text-[13px] text-muted">Plugins run on a Paper server. Create one in Servers first.</p>
+        <p className="text-[13px] text-muted">{tr("Plugins run on a Paper server. Create one in Servers first.")}</p>
       )
     ) : targets.length ? (
       <div className="flex flex-col gap-2">
-        <select aria-label="Instance" value={instanceId} onChange={(e) => setInstanceId(e.target.value)} className={inputClass}>
+        <select aria-label={tr("Instance")} value={instanceId} onChange={(e) => setInstanceId(e.target.value)} className={inputClass}>
           {targets.map((i) => <option key={i.id} value={i.id}>{i.name} ({i.gameVersion}, {i.loader})</option>)}
         </select>
         {category === "datapacks" && (worlds.length ? (
-          <select aria-label="World" value={world} onChange={(e) => setWorld(e.target.value)} className={inputClass}>
-            {worlds.map((w) => <option key={w.folder} value={w.folder}>World: {w.folder}</option>)}
+          <select aria-label={tr("World")} value={world} onChange={(e) => setWorld(e.target.value)} className={inputClass}>
+            {worlds.map((w) => <option key={w.folder} value={w.folder}>{tr("World: {folder}", { folder: w.folder })}</option>)}
           </select>
-        ) : <p className="text-[13px] text-muted">This instance has no worlds yet. Play once and create a world first.</p>)}
+        ) : <p className="text-[13px] text-muted">{tr("This instance has no worlds yet. Play once and create a world first.")}</p>)}
       </div>
     ) : (
-      <p className="text-[13px] text-muted">{category === "mods" || category === "shaders" ? "Needs an instance with a mod loader (Fabric, Quilt or NeoForge)." : "Create an instance first."}</p>
+      <p className="text-[13px] text-muted">{category === "mods" || category === "shaders" ? tr("Needs an instance with a mod loader (Fabric, Quilt or NeoForge).") : tr("Create an instance first.")}</p>
     );
 
   const canInstall = isModrinth && (category === "modpacks" || (category === "plugins" ? !!serverId : !!instance && (category !== "datapacks" || !!world)));
@@ -140,17 +141,17 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
           {ref.iconUrl ? <motion.img layoutId={`icon-${ref.id}`} src={ref.iconUrl} alt="" className="size-20 shrink-0 rounded-panel bg-slate-raised object-cover shadow-lg" /> : <div className="size-20 shrink-0 rounded-panel bg-slate-raised" />}
           <div className="min-w-0 flex-1">
             <h2 className="text-[24px] font-bold leading-tight">{ref.title}</h2>
-            {ref.author && <p className="text-[14px] text-muted">by {ref.author}</p>}
+            {ref.author && <p className="text-[14px] text-muted">{tr("by {author}", { author: ref.author })}</p>}
             <div className="mt-2 flex flex-wrap items-center gap-2">
               {ref.downloads !== undefined && <Badge><Download className="size-3" /> {compact(ref.downloads)}</Badge>}
               {ref.follows !== undefined && <Badge><Heart className="size-3" /> {compact(ref.follows)}</Badge>}
-              {p?.client_side && p.client_side !== "unsupported" && <Badge><Monitor className="size-3" /> Client</Badge>}
-              {p?.server_side && p.server_side !== "unsupported" && <Badge><ServerIcon className="size-3" /> Server</Badge>}
+              {p?.client_side && p.client_side !== "unsupported" && <Badge><Monitor className="size-3" /> {tr("Client")}</Badge>}
+              {p?.server_side && p.server_side !== "unsupported" && <Badge><ServerIcon className="size-3" /> {tr("Server")}</Badge>}
               {p?.license && <Badge>{p.license.name || p.license.id}</Badge>}
             </div>
           </div>
-          <IconButton icon={Heart} label={isFav ? "Remove from favorites" : "Add to favorites"} active={isFav} onClick={toggleFav} />
-          <IconButton icon={X} label="Close" onClick={() => openProject(null)} />
+          <IconButton icon={Heart} label={isFav ? tr("Remove from favorites") : tr("Add to favorites")} active={isFav} onClick={toggleFav} />
+          <IconButton icon={X} label={tr("Close")} onClick={() => openProject(null)} />
         </div>
       </div>
 
@@ -161,16 +162,16 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
           {isModrinth ? (
             alreadyIn ? (
               <div className="flex flex-col items-end gap-1">
-                <Button variant="secondary" size="lg" icon={Check} disabled>Installed</Button>
-                <button type="button" onClick={install} disabled={busy} className="text-[12px] text-muted underline-offset-2 hover:text-text hover:underline">Reinstall / update</button>
+                <Button variant="secondary" size="lg" icon={Check} disabled>{tr("Installed")}</Button>
+                <button type="button" onClick={install} disabled={busy} className="text-[12px] text-muted underline-offset-2 hover:text-text hover:underline">{tr("Reinstall / update")}</button>
               </div>
             ) : (
               <Button variant="primary" size="lg" className="shine" icon={Download} loading={busy} disabled={!canInstall} onClick={install}>
-                {category === "modpacks" ? "Install pack" : "Install"}
+                {category === "modpacks" ? tr("Install pack") : tr("Install")}
               </Button>
             )
           ) : (
-            <Button variant="secondary" icon={ExternalLink} onClick={() => open(pageUrl)}>Open on CurseForge</Button>
+            <Button variant="secondary" icon={ExternalLink} onClick={() => open(pageUrl)}>{tr("Open on CurseForge")}</Button>
           )}
         </div>
       </div>
@@ -180,9 +181,9 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
           value={tab}
           onChange={setTab}
           tabs={[
-            { id: "about", label: "What it does", icon: BookOpen },
-            { id: "gallery", label: "Gallery", icon: GalleryHorizontal, count: gallery.length || undefined },
-            { id: "versions", label: "Versions", icon: History },
+            { id: "about", label: tr("What it does"), icon: BookOpen },
+            { id: "gallery", label: tr("Gallery"), icon: GalleryHorizontal, count: gallery.length || undefined },
+            { id: "versions", label: tr("Versions"), icon: History },
           ]}
         />
       </div>
@@ -193,7 +194,7 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
             {tab === "about" && (
               <>
                 <div className="mb-5 rounded-card border border-copper/25 bg-copper/8 p-4">
-                  <p className="text-[13px] font-medium text-copper">In short</p>
+                  <p className="text-[13px] font-medium text-copper">{tr("In short")}</p>
                   <p className="mt-1 text-[15px]">{ref.description || p?.description}</p>
                 </div>
                 {projectQ.isLoading && isModrinth ? (
@@ -211,13 +212,13 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
                     }}
                   />
                 ) : (
-                  <p className="text-muted">No long description.</p>
+                  <p className="text-muted">{tr("No long description.")}</p>
                 )}
                 <div className="mt-6 flex flex-wrap gap-2">
-                  <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => open(pageUrl)}>Project page</Button>
-                  {p?.source_url && <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => open(p.source_url!)}>Source code</Button>}
-                  {p?.wiki_url && <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => open(p.wiki_url!)}>Wiki</Button>}
-                  {p?.discord_url && <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => open(p.discord_url!)}>Discord</Button>}
+                  <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => open(pageUrl)}>{tr("Project page")}</Button>
+                  {p?.source_url && <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => open(p.source_url!)}>{tr("Source code")}</Button>}
+                  {p?.wiki_url && <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => open(p.wiki_url!)}>{tr("Wiki")}</Button>}
+                  {p?.discord_url && <Button size="sm" variant="ghost" icon={ExternalLink} onClick={() => open(p.discord_url!)}>{tr("Discord")}</Button>}
                 </div>
               </>
             )}
@@ -230,7 +231,7 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
                   </motion.figure>
                 ))}
               </div>
-            ) : <p className="text-muted">No screenshots for this project.</p>)}
+            ) : <p className="text-muted">{tr("No screenshots for this project.")}</p>)}
             {tab === "versions" && (versionsQ.isLoading ? (
               <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-12" />)}</div>
             ) : (
@@ -251,7 +252,7 @@ function DrawerBody({ project: ref }: { project: ProjectRef }) {
             ))}
           </motion.div>
         </AnimatePresence>
-        {!inTauri && <p className="mt-6 text-[12px] text-muted">Demo mode: installing needs the desktop app.</p>}
+        {!inTauri && <p className="mt-6 text-[12px] text-muted">{tr("Demo mode: installing needs the desktop app.")}</p>}
       </div>
     </>
   );

@@ -5,6 +5,7 @@ import logoGlyph from "../assets/logo-glyph.svg";
 import { useApp } from "../state";
 import { AccountButton } from "./AccountButton";
 import { click } from "../lib/sounds";
+import { tr } from "../lib/i18n";
 
 /** The animated world behind the glass. */
 /** Deterministic pseudo-random particles, so the layout is stable between renders. */
@@ -64,12 +65,12 @@ export function Backdrop() {
 }
 
 const NAV = [
-  { to: "/", label: "Home", icon: Home, end: true },
-  { to: "/discover/mods", match: "/discover", label: "Discover", icon: Compass },
-  { to: "/favorites", label: "Favorites", icon: Heart },
-  { to: "/packs", label: "World packs", icon: Layers3 },
-  { to: "/servers", label: "Servers", icon: Server },
-  { to: "/transfer", label: "Transfer mods", icon: ArrowRightLeft },
+  { to: "/", label: tr("Home"), icon: Home, end: true },
+  { to: "/discover/mods", match: "/discover", label: tr("Discover"), icon: Compass },
+  { to: "/favorites", label: tr("Favorites"), icon: Heart },
+  { to: "/packs", label: tr("World packs"), icon: Layers3 },
+  { to: "/servers", label: tr("Servers"), icon: Server },
+  { to: "/transfer", label: tr("Transfer mods"), icon: ArrowRightLeft },
 ];
 
 export function Sidebar() {
@@ -84,12 +85,12 @@ export function Sidebar() {
 
   return (
     <motion.aside animate={{ width: collapsed ? 76 : 236 }} transition={{ type: "spring", stiffness: 400, damping: 40 }} className="glass relative z-20 m-3 mr-0 flex shrink-0 flex-col rounded-panel p-3">
-      <button type="button" onClick={() => navigate("/")} className={`press mb-5 flex items-center gap-2.5 rounded-card ${collapsed ? "justify-center" : "px-1.5"} py-1`} aria-label="Ember home">
+      <button type="button" onClick={() => navigate("/")} className={`press mb-5 flex items-center gap-2.5 rounded-card ${collapsed ? "justify-center" : "px-1.5"} py-1`} aria-label={tr("Ember home")}>
         <motion.img src={logoGlyph} alt="" className="h-8 w-auto drop-shadow-[0_0_12px_var(--accent)]" whileHover={{ rotate: [0, -8, 8, 0], scale: 1.08 }} transition={{ duration: 0.5 }} />
-        {!collapsed && <span className="text-[19px] font-bold tracking-tight">Ember</span>}
+        {!collapsed && <span className="text-[19px] font-bold tracking-tight">{tr("Ember")}</span>}
       </button>
 
-      <nav className="flex flex-col gap-1" aria-label="Main">
+      <nav className="flex flex-col gap-1" aria-label={tr("Main")}>
         {NAV.map((n) => {
           const active = n.end ? pathname === "/" : pathname.startsWith(n.match ?? n.to);
           return (
@@ -105,7 +106,7 @@ export function Sidebar() {
 
       {!collapsed && instances.length > 0 && (
         <div className="mt-6 min-h-0 flex-1 overflow-y-auto">
-          <p className="mb-1.5 px-3 text-[12px] text-muted">Instances</p>
+          <p className="mb-1.5 px-3 text-[12px] text-muted">{tr("Instances")}</p>
           {instances.slice(0, 8).map((i) => {
             const active = pathname === `/instance/${i.id}`;
             return (
@@ -124,18 +125,18 @@ export function Sidebar() {
       {collapsed && <div className="flex-1" />}
 
       <div className="mt-3 flex flex-col gap-1.5">
-        <button type="button" onClick={() => setNewInstanceOpen(true)} className={`press flex items-center justify-center gap-2 rounded-card border border-dashed border-slate-line py-2.5 text-[14px] text-muted hover:border-copper hover:text-copper`} title="New instance">
-          <Plus className="size-4" aria-hidden /> {!collapsed && "New instance"}
+        <button type="button" onClick={() => setNewInstanceOpen(true)} className={`press flex items-center justify-center gap-2 rounded-card border border-dashed border-slate-line py-2.5 text-[14px] text-muted hover:border-copper hover:text-copper`} title={tr("New instance")}>
+          <Plus className="size-4" aria-hidden /> {!collapsed && tr("New instance")}
         </button>
-        <NavLink to="/settings" className={item(pathname.startsWith("/settings"))} onClick={click} title={collapsed ? "Settings" : undefined}>
+        <NavLink to="/settings" className={item(pathname.startsWith("/settings"))} onClick={click} title={collapsed ? tr("Settings") : undefined}>
           {pathname.startsWith("/settings") && <motion.span layoutId="nav-active" className="absolute inset-0 rounded-card bg-slate-raised/90" />}
           <Settings className="relative size-[18px] transition-transform duration-500 group-hover:rotate-90" aria-hidden />
-          {!collapsed && <span className="relative">Settings</span>}
+          {!collapsed && <span className="relative">{tr("Settings")}</span>}
         </NavLink>
         {!collapsed && <AccountButton />}
-        <button type="button" onClick={() => setAppearance({ sidebarCollapsed: !collapsed })} className="press flex items-center justify-center rounded-card py-1.5 text-muted hover:text-text" aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+        <button type="button" onClick={() => setAppearance({ sidebarCollapsed: !collapsed })} className="press flex items-center justify-center rounded-card py-1.5 text-muted hover:text-text" aria-label={collapsed ? tr("Expand sidebar") : tr("Collapse sidebar")}>
           {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
-          {!collapsed && running > 0 && <span className="ml-2 text-[12px]">{running} running</span>}
+          {!collapsed && running > 0 && <span className="ml-2 text-[12px]">{tr("{running} running", { running })}</span>}
         </button>
       </div>
     </motion.aside>
@@ -149,7 +150,7 @@ export function TopBar() {
     <header className="flex items-center gap-3 px-6 pb-2 pt-4">
       <button type="button" onClick={() => setPaletteOpen(true)} className="glass press group flex w-full max-w-xl items-center gap-3 rounded-card px-4 py-2.5 text-left text-[14px] text-muted hover:text-text">
         <Search className="size-4 transition-transform group-hover:scale-110" aria-hidden />
-        <span className="flex-1">Search instances, mods, modpacks, settings…</span>
+        <span className="flex-1">{tr("Search instances, mods, modpacks, settings…")}</span>
         <kbd className="flex items-center gap-0.5 rounded-chip border border-slate-line px-1.5 py-0.5 text-[11px]">
           <Command className="size-3" />K
         </kbd>
@@ -184,7 +185,7 @@ export function Toaster() {
                   </button>
                 )}
               </div>
-              <button type="button" aria-label="Dismiss" onClick={() => dismiss(t.id)} className="text-muted hover:text-text">
+              <button type="button" aria-label={tr("Dismiss")} onClick={() => dismiss(t.id)} className="text-muted hover:text-text">
                 <X className="size-4" />
               </button>
             </div>

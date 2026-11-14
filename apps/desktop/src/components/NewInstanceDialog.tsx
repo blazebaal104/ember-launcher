@@ -8,13 +8,14 @@ import { useProfiles, useVersions, useWorldPacks } from "../lib/queries";
 import { useApp } from "../state";
 import { applyWorldPack, summarise } from "../lib/worldpacks";
 import { Button, Field, Modal, Toggle, inputClass } from "./ui";
+import { tr } from "../lib/i18n";
 
 const CHANNELS: Channel[] = ["release", "snapshot", "pre-release", "release-candidate"];
 const LOADERS: Array<{ id: Loader; text: string }> = [
-  { id: "fabric", text: "Most mods, fastest updates" },
-  { id: "neoforge", text: "Big tech & magic mods" },
-  { id: "quilt", text: "Runs Fabric mods too" },
-  { id: "vanilla", text: "No mods at all" },
+  { id: "fabric", text: tr("Most mods, fastest updates") },
+  { id: "neoforge", text: tr("Big tech & magic mods") },
+  { id: "quilt", text: tr("Runs Fabric mods too") },
+  { id: "vanilla", text: tr("No mods at all") },
 ];
 
 export function NewInstanceDialog() {
@@ -62,13 +63,13 @@ export function NewInstanceDialog() {
         try {
           setPackNote(`“${pack.name}”: ${summarise(await applyWorldPack(pack, res.instance))}`);
         } catch (e) {
-          setPackNote(`“${pack.name}” couldn't be added: ${e instanceof Error ? e.message : String(e)}`);
+          setPackNote(tr("“{name}” couldn't be added: {n1}", { name: pack.name, n1: e instanceof Error ? e.message : String(e) }));
         }
       }
       setResult({ id: res.instance.id, reports: res.reports });
       await refresh();
     } catch (e) {
-      toast({ title: "Couldn't create the instance", body: String(e), tone: "error" });
+      toast({ title: tr("Couldn't create the instance"), body: String(e), tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -78,15 +79,15 @@ export function NewInstanceDialog() {
 
   if (result) {
     const installed = result.reports.flatMap((r) => r.installed);
-    const notes = result.reports.flatMap((r) => [...r.skipped.map((s) => `Skipped ${s}`), ...r.warnings]);
+    const notes = result.reports.flatMap((r) => [...r.skipped.map((s) => tr("Skipped {s}", { s })), ...r.warnings]);
     return (
-      <Modal open={newInstanceOpen} onClose={close} title="Ready to play" footer={<><Button onClick={close}>Close</Button><Button variant="primary" onClick={() => { close(); navigate(`/instance/${result.id}`); }}>Open instance</Button></>}>
+      <Modal open={newInstanceOpen} onClose={close} title={tr("Ready to play")} footer={<><Button onClick={close}>{tr("Close")}</Button><Button variant="primary" onClick={() => { close(); navigate(`/instance/${result.id}`); }}>{tr("Open instance")}</Button></>}>
         <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 300, damping: 18 }} className="mx-auto mb-4 grid size-16 place-items-center rounded-full bg-copper text-on-accent">
           <Check className="size-8" />
         </motion.div>
         {installed.length > 0 && (
           <>
-            <p className="mb-2 text-[14px] text-muted">Set up for this exact version:</p>
+            <p className="mb-2 text-[14px] text-muted">{tr("Set up for this exact version:")}</p>
             <ul className="flex flex-wrap gap-1.5">
               {installed.map((m, i) => <motion.li key={m} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + i * 0.05 }} className="rounded-chip bg-copper/12 px-2.5 py-1 text-[13px] text-copper">{m.split(" (")[0]}</motion.li>)}
             </ul>
@@ -99,11 +100,11 @@ export function NewInstanceDialog() {
   }
 
   return (
-    <Modal open={newInstanceOpen} onClose={close} title="New instance" footer={<><Button onClick={close}>Cancel</Button><Button variant="primary" className="shine" icon={Plus} loading={busy} disabled={!version} onClick={create}>Create instance</Button></>}>
+    <Modal open={newInstanceOpen} onClose={close} title={tr("New instance")} footer={<><Button onClick={close}>{tr("Cancel")}</Button><Button variant="primary" className="shine" icon={Plus} loading={busy} disabled={!version} onClick={create}>{tr("Create instance")}</Button></>}>
       <div className="flex flex-col gap-5">
-        <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} placeholder={`Minecraft ${version}`} className={inputClass} autoFocus /></Field>
+        <Field label={tr("Name")}><input value={name} onChange={(e) => setName(e.target.value)} placeholder={tr("Minecraft {version}", { version })} className={inputClass} autoFocus /></Field>
         <div>
-          <p className="mb-1.5 text-[13px] font-medium text-muted">Version</p>
+          <p className="mb-1.5 text-[13px] font-medium text-muted">{tr("Version")}</p>
           <div className="mb-2 flex flex-wrap gap-1.5">
             {CHANNELS.map((c) => <button key={c} type="button" aria-pressed={channels.has(c)} onClick={() => toggle(c)} className={`press rounded-chip px-2.5 py-1 text-[13px] ${channels.has(c) ? "bg-copper/15 text-copper" : "bg-slate-raised text-muted hover:text-text"}`}>{channelName[c]}</button>)}
           </div>
@@ -112,7 +113,7 @@ export function NewInstanceDialog() {
           </select>
         </div>
         <div>
-          <p className="mb-1.5 text-[13px] font-medium text-muted">Mod loader</p>
+          <p className="mb-1.5 text-[13px] font-medium text-muted">{tr("Mod loader")}</p>
           <div className="grid grid-cols-2 gap-2">
             {LOADERS.map((l) => (
               <button key={l.id} type="button" aria-pressed={loader === l.id} onClick={() => setLoader(l.id)} className={`press rounded-card border p-3 text-left ${loader === l.id ? "border-copper bg-copper/10" : "border-slate-line hover:border-muted"}`}>
@@ -122,24 +123,24 @@ export function NewInstanceDialog() {
             ))}
           </div>
         </div>
-        <Field label="Game settings profile" hint="Your keybinds, FOV and video settings. Edit profiles in Settings.">
+        <Field label={tr("Game settings profile")} hint={tr("Your keybinds, FOV and video settings. Edit profiles in Settings.")}>
           <select value={profile} onChange={(e) => setProfile(e.target.value)} className={inputClass}>
-            <option value="">None (Minecraft defaults)</option>
+            <option value="">{tr("None (Minecraft defaults)")}</option>
             {(profiles.data?.profiles ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </Field>
         {!!packs.data?.length && (
-          <Field label="World pack (optional)" hint="Adds your saved mix of mods, resource packs, data packs and shaders, matched to this version.">
+          <Field label={tr("World pack (optional)")} hint={tr("Adds your saved mix of mods, resource packs, data packs and shaders, matched to this version.")}>
             <select value={packId} onChange={(e) => setPackId(e.target.value)} className={inputClass}>
-              <option value="">None</option>
-              {packs.data.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.items.length} items)</option>)}
+              <option value="">{tr("None")}</option>
+              {packs.data.map((p) => <option key={p.id} value={p.id}>{tr("{name} ({length} items)", { name: p.name, length: p.items.length })}</option>)}
             </select>
           </Field>
         )}
         <div className="space-y-4 rounded-card bg-slate-raised/50 p-4">
-          <Toggle checked={perf && loader !== "vanilla"} disabled={loader === "vanilla"} onChange={setPerf} label="Performance stack" detail={<span className="inline-flex items-center gap-1"><Gauge className="size-3.5" /> Sodium, Lithium, FerriteCore, ImmediatelyFast, Entity Culling and more.</span>} />
-          <Toggle checked={overlay} onChange={setOverlay} label="Ember in-game menu" detail={<span className="inline-flex items-center gap-1"><Keyboard className="size-3.5" /> Right Shift in game: HUD, zoom, fullbright, 50+ tweaks.</span>} />
-          {loader === "vanilla" && overlay && <p className="flex items-center gap-1.5 text-[13px] text-gold"><Sparkles className="size-3.5" /> The in-game menu needs a loader, so this instance will use Fabric.</p>}
+          <Toggle checked={perf && loader !== "vanilla"} disabled={loader === "vanilla"} onChange={setPerf} label={tr("Performance stack")} detail={<span className="inline-flex items-center gap-1"><Gauge className="size-3.5" /> {tr("Sodium, Lithium, FerriteCore, ImmediatelyFast, Entity Culling and more.")}</span>} />
+          <Toggle checked={overlay} onChange={setOverlay} label={tr("Ember in-game menu")} detail={<span className="inline-flex items-center gap-1"><Keyboard className="size-3.5" /> {tr("Right Shift in game: HUD, zoom, fullbright, 50+ tweaks.")}</span>} />
+          {loader === "vanilla" && overlay && <p className="flex items-center gap-1.5 text-[13px] text-gold"><Sparkles className="size-3.5" /> {tr("The in-game menu needs a loader, so this instance will use Fabric.")}</p>}
         </div>
       </div>
     </Modal>

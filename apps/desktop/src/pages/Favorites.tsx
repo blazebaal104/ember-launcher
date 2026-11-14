@@ -7,6 +7,7 @@ import { useFavorites, prefetchProject } from "../lib/queries";
 import { CATEGORIES } from "../lib/categories";
 import { api } from "../lib/ipc";
 import { Button, Empty, IconButton, Skeleton } from "../components/ui";
+import { tr } from "../lib/i18n";
 
 export function Favorites() {
   const favs = useFavorites();
@@ -18,12 +19,12 @@ export function Favorites() {
   return (
     <div className="mx-auto max-w-6xl px-6 pb-10 pt-2">
       <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
-        <h1 className="text-[30px] font-bold tracking-tight">Favorites</h1>
-        <p className="mt-1 text-muted">Everything you've hearted in Discover, ready to install into any instance.</p>
+        <h1 className="text-[30px] font-bold tracking-tight">{tr("Favorites")}</h1>
+        <p className="mt-1 text-muted">{tr("Everything you've hearted in Discover, ready to install into any instance.")}</p>
       </motion.header>
       {favs.isLoading ? <Skeleton className="h-40" /> : groups.length === 0 ? (
-        <Empty icon={Heart} title="No favorites yet" action={<Button variant="primary" icon={Compass} onClick={() => navigate("/discover/mods")}>Go to Discover</Button>}>
-          Tap the heart on any mod, pack or shader to keep it here.
+        <Empty icon={Heart} title={tr("No favorites yet")} action={<Button variant="primary" icon={Compass} onClick={() => navigate("/discover/mods")}>{tr("Go to Discover")}</Button>}>
+          {tr("Tap the heart on any mod, pack or shader to keep it here.")}
         </Empty>
       ) : (
         <div className="flex flex-col gap-8">
@@ -49,7 +50,7 @@ export function Favorites() {
                     </div>
                     <IconButton
                       icon={HeartOff}
-                      label="Remove from favorites"
+                      label={tr("Remove from favorites")}
                       onClick={async (e) => {
                         e.stopPropagation();
                         qc.setQueryData(["favorites"], await api.toggleFavorite(f));

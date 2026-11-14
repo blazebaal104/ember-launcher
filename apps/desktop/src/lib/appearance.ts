@@ -28,6 +28,8 @@ export interface Appearance {
   /** How pages and tabs change. */
   transition: TransitionStyle;
   transitionSpeed: TransitionSpeed;
+  /** Unset until the user picks one on first start. */
+  language?: "en" | "it";
 }
 
 export const DEFAULT_APPEARANCE: Appearance = {
@@ -101,6 +103,7 @@ export function normalise(raw: unknown): Appearance {
   if (!["fade", "slide", "zoom", "none"].includes(a.transition)) a.transition = DEFAULT_APPEARANCE.transition;
   if (!["instant", "fast", "normal", "smooth"].includes(a.transitionSpeed)) a.transitionSpeed = DEFAULT_APPEARANCE.transitionSpeed;
   if (!/^#[0-9a-f]{6}$/i.test(a.accent)) a.accent = DEFAULT_APPEARANCE.accent;
+  if (a.language !== "en" && a.language !== "it") delete a.language;
   return a;
 }
 

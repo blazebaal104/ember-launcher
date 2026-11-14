@@ -1,5 +1,6 @@
 import { Component, type ReactNode } from "react";
 import { RotateCcw } from "lucide-react";
+import { tr } from "../lib/i18n";
 
 /**
  * Safety net: if any part of the UI throws, show what happened instead of a black window,
@@ -27,13 +28,13 @@ export class ErrorBoundary extends Component<{ children: ReactNode; area?: strin
     return (
       <div className="grid h-full min-h-[300px] place-items-center p-8">
         <div className="glass max-w-lg rounded-panel p-6 text-center">
-          <p className="text-[17px] font-bold">{this.props.area ? `This ${this.props.area} hit a problem` : "Something went wrong"}</p>
+          <p className="text-[17px] font-bold">{this.props.area ? tr("This {area} hit a problem", { area: this.props.area }) : tr("Something went wrong")}</p>
           <p className="mt-2 text-[13px] text-muted" data-selectable>{this.state.error.message}</p>
           <div className="mt-4 flex justify-center gap-2">
             <button type="button" onClick={this.reset} className="press inline-flex items-center gap-2 rounded-card bg-copper px-4 py-2 text-[14px] font-medium text-on-accent">
-              <RotateCcw className="size-4" /> Try again
+              <RotateCcw className="size-4" /> {tr("Try again")}
             </button>
-            <button type="button" onClick={() => location.reload()} className="press rounded-card bg-slate-raised px-4 py-2 text-[14px]">Reload Ember</button>
+            <button type="button" onClick={() => location.reload()} className="press rounded-card bg-slate-raised px-4 py-2 text-[14px]">{tr("Reload Ember")}</button>
           </div>
         </div>
       </div>

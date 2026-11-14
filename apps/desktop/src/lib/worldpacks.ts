@@ -9,6 +9,7 @@ import { modrinth, transferEngine } from "./clients";
 import { api, type Instance, type PackCategory, type PackItem, type WorldPack } from "./ipc";
 import { ensureIris } from "./install";
 import { isInstalled, loadInstalled } from "./queries";
+import { tr } from "./i18n";
 
 export interface ApplyReport {
   added: string[];
@@ -31,7 +32,7 @@ export async function applyWorldPack(pack: WorldPack, inst: Instance, onStep?: (
   const needsLoader = (c: PackCategory) => c === "mods" || c === "shaders";
   const items = pack.items.filter((i) => {
     if (needsLoader(i.category) && inst.loader === "vanilla") {
-      report.missing.push(`${i.title} (needs a mod loader)`);
+      report.missing.push(tr("{title} (needs a mod loader)", { title: i.title }));
       return false;
     }
     return true;
@@ -49,12 +50,12 @@ export async function applyWorldPack(pack: WorldPack, inst: Instance, onStep?: (
         }
         const best = pickBestVersion(await modrinth.projectVersions(item.projectId, loadersFor(item, inst), [inst.gameVersion]));
         if (!best) {
-          report.missing.push(`${item.title} (nothing for ${inst.gameVersion} yet)`);
+          report.missing.push(tr("{title} (nothing for {gameVersion} yet)", { title: item.title, gameVersion: inst.gameVersion }));
           return null;
         }
         return { item, file: mrToResolved(best, item.title, item.slug) };
       } catch {
-        report.missing.push(`${item.title} (couldn't reach Modrinth)`);
+        report.missing.push(tr("{title} (couldn't reach Modrinth)", { title: item.title }));
         return null;
       } finally {
         onStep?.(++done, items.length);
@@ -84,7 +85,7 @@ export async function applyWorldPack(pack: WorldPack, inst: Instance, onStep?: (
     const n = (await ensureIris(inst)).trim();
     if (n) report.notes.push(n);
   }
-  if (ok.some((r) => r.item.category === "datapacks")) report.notes.push("Data packs are added to every world of this instance each time it starts.");
+  if (ok.some((r) => r.item.category === "datapacks")) report.notes.push(tr("Data packs are added to every world of this instance each time it starts."));
   return report;
 }
 
@@ -109,7 +110,7 @@ export async function packFromInstance(inst: Instance, name: string): Promise<Wo
   return {
     id: crypto.randomUUID(),
     name,
-    description: `Made from “${inst.name}” (${inst.gameVersion}).`,
+    description: tr("Made from “{name}” ({gameVersion}).", { name: inst.name, gameVersion: inst.gameVersion }),
     items: filtered,
     shaderConfig: shader.config ?? null,
     gameProfile: inst.gameProfile ?? null,
@@ -119,8 +120,8 @@ export async function packFromInstance(inst: Instance, name: string): Promise<Wo
 
 export function summarise(r: ApplyReport) {
   const parts = [];
-  if (r.added.length) parts.push(`Added ${r.added.length}`);
-  if (r.alreadyThere.length) parts.push(`${r.alreadyThere.length} already there`);
-  if (r.missing.length) parts.push(`skipped ${r.missing.length}: ${r.missing.join(", ")}`);
+  if (r.added.length) parts.push(tr("Added {n}", { n: r.added.length }));
+  if (r.alreadyThere.length) parts.push(tr("{n} already there", { n: r.alreadyThere.length }));
+  if (r.missing.length) parts.push(tr("skipped {n}: {list}", { n: r.missing.length, list: r.missing.join(", ") }));
   return [parts.join(" · "), ...r.notes].filter(Boolean).join(". ");
 }

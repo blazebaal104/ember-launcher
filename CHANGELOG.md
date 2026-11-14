@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.0
+- **Ember speaks Italian.** The first time Ember starts it asks for your language (English or Italiano) before the tour, and the whole launcher follows it: menus, pages, settings, buttons, messages, dates.
+- Change the language any time in **Settings → Launcher** or **Settings → About**. Ember reloads its window to switch.
+- Existing installs are asked once after updating.
+- Not translated yet: the in-game menu, and some error messages that come straight from Minecraft or Microsoft.
+
 ## 0.7.1
 - **Account page: the 3D skin preview now shows your skin.** It was being drawn at zero size, so the panel looked empty.
 - The preview starts in a three-quarter view with room around the model, on a checkered backdrop, and the name tag uses a Minecraft-style font.

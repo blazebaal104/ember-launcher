@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/ipc";
 import { useApp } from "../state";
 import { SignIn } from "./account/SignIn";
+import { tr } from "../lib/i18n";
 
 function Avatar({ uuid, name, size = 32 }: { uuid: string; name: string; size?: number }) {
   return (
@@ -44,23 +45,23 @@ export function AccountButton() {
       qc.invalidateQueries({ queryKey: ["accounts"] });
       qc.invalidateQueries({ queryKey: ["account-details"] });
       qc.invalidateQueries({ queryKey: ["account-stats"] });
-      toast({ title: `Playing as ${name}`, tone: "success" });
+      toast({ title: tr("Playing as {name}", { name }), tone: "success" });
     } catch (e) {
-      toast({ title: "Couldn't switch", body: String(e), tone: "error" });
+      toast({ title: tr("Couldn't switch"), body: String(e), tone: "error" });
     }
   };
 
   return (
     <div ref={box} className="relative">
       <div className="flex items-center gap-1 rounded-card hover:bg-slate-raised/70">
-        <button type="button" onClick={() => navigate("/account")} className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left" title="Your account">
+        <button type="button" onClick={() => navigate("/account")} className="flex min-w-0 flex-1 items-center gap-3 px-2 py-2 text-left" title={tr("Your account")}>
           <Avatar uuid={account.uuid} name={account.username} />
           <div className="min-w-0">
             <div className="truncate text-[14px] font-medium">{account.username}</div>
-            <div className="text-[12px] text-muted">Account</div>
+            <div className="text-[12px] text-muted">{tr("Account")}</div>
           </div>
         </button>
-        <button type="button" onClick={() => setOpen(!open)} className="mr-1 rounded-chip p-1.5 text-muted hover:bg-slate-line hover:text-text" aria-label="Switch account" aria-expanded={open}>
+        <button type="button" onClick={() => setOpen(!open)} className="mr-1 rounded-chip p-1.5 text-muted hover:bg-slate-line hover:text-text" aria-label={tr("Switch account")} aria-expanded={open}>
           <ChevronsUpDown className="size-4" />
         </button>
       </div>
@@ -75,7 +76,7 @@ export function AccountButton() {
               </button>
             ))}
             <button type="button" onClick={() => { setOpen(false); navigate("/account"); }} className="mt-1 flex w-full items-center gap-2.5 rounded-card px-2 py-1.5 text-left text-[13px] text-muted hover:bg-slate-raised hover:text-text">
-              <UserPlus className="size-4" /> Add or manage accounts
+              <UserPlus className="size-4" /> {tr("Add or manage accounts")}
             </button>
           </motion.div>
         )}

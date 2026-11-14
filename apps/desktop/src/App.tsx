@@ -8,6 +8,7 @@ import { NewInstanceDialog } from "./components/NewInstanceDialog";
 import { CommandPalette } from "./components/CommandPalette";
 import { ProjectDrawer } from "./components/ProjectDrawer";
 import { Onboarding } from "./components/Onboarding";
+import { LanguagePicker } from "./components/LanguagePicker";
 import { Home } from "./pages/Home";
 import { Discover } from "./pages/Discover";
 import { Favorites } from "./pages/Favorites";
@@ -93,6 +94,7 @@ function Shell() {
       <ErrorBoundary area="dialog"><CommandPalette /></ErrorBoundary>
       <ErrorBoundary area="panel"><ProjectDrawer /></ErrorBoundary>
       <ErrorBoundary area="tour"><Onboarding /></ErrorBoundary>
+      <ErrorBoundary area="language"><LanguagePicker /></ErrorBoundary>
       <ErrorBoundary area="dialog"><UpdateDialog /></ErrorBoundary>
       <Toaster />
     </MotionConfig>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Copy, Search, Trash2 } from "lucide-react";
 import { clearLog, useLog } from "../lib/logs";
 import { IconButton, inputClass } from "./ui";
+import { tr } from "../lib/i18n";
 
 /** Live console with filter, copy, clear and level colouring. Optional command input (servers). */
 export function Console({ logKey, onCommand, placeholder }: { logKey: string; onCommand?: (cmd: string) => void; placeholder?: string }) {
@@ -24,10 +25,10 @@ export function Console({ logKey, onCommand, placeholder }: { logKey: string; on
       <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Filter lines" className={`${inputClass} pl-9`} />
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={tr("Filter lines")} className={`${inputClass} pl-9`} />
         </div>
-        <IconButton icon={Copy} label="Copy log" onClick={() => navigator.clipboard?.writeText(lines.join("\n"))} />
-        <IconButton icon={Trash2} label="Clear" onClick={() => clearLog(logKey)} />
+        <IconButton icon={Copy} label={tr("Copy log")} onClick={() => navigator.clipboard?.writeText(lines.join("\n"))} />
+        <IconButton icon={Trash2} label={tr("Clear")} onClick={() => clearLog(logKey)} />
       </div>
       <div
         ref={box}
@@ -38,7 +39,7 @@ export function Console({ logKey, onCommand, placeholder }: { logKey: string; on
         className="min-h-0 flex-1 overflow-auto rounded-card border border-slate-line bg-black/40 p-3 font-[ui-monospace,Consolas,monospace] text-[12px] leading-[1.55]"
         data-selectable
       >
-        {shown.length === 0 ? <p className="text-muted">Nothing here yet. Output appears when it starts.</p> : shown.map((l, i) => <div key={i} className={`whitespace-pre-wrap break-all ${tone(l)}`}>{l}</div>)}
+        {shown.length === 0 ? <p className="text-muted">{tr("Nothing here yet. Output appears when it starts.")}</p> : shown.map((l, i) => <div key={i} className={`whitespace-pre-wrap break-all ${tone(l)}`}>{l}</div>)}
       </div>
       {onCommand && (
         <form
@@ -48,7 +49,7 @@ export function Console({ logKey, onCommand, placeholder }: { logKey: string; on
             setCmd("");
           }}
         >
-          <input value={cmd} onChange={(e) => setCmd(e.target.value)} placeholder={placeholder ?? "Type a command, e.g. op YourName"} className={`${inputClass} font-[ui-monospace,Consolas,monospace]`} />
+          <input value={cmd} onChange={(e) => setCmd(e.target.value)} placeholder={placeholder ?? tr("Type a command, e.g. op YourName")} className={`${inputClass} font-[ui-monospace,Consolas,monospace]`} />
         </form>
       )}
     </div>

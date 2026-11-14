@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { forwardRef, useEffect, useId, type ButtonHTMLAttributes, type ReactNode } from "react";
 import { X, type LucideIcon } from "lucide-react";
 import { click } from "../lib/sounds";
+import { tr } from "../lib/i18n";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
@@ -167,10 +168,10 @@ export function Slider({ value, onChange, min, max, step = 1, label, format, det
   );
 }
 
-export function Segmented<T extends string>({ options, value, onChange }: { options: Array<{ id: T; label: string; icon?: LucideIcon }>; value: T; onChange: (v: T) => void }) {
+export function Segmented<T extends string>({ options, value, onChange, className = "" }: { options: Array<{ id: T; label: string; icon?: LucideIcon }>; value: T; onChange: (v: T) => void; className?: string }) {
   const group = useId();
   return (
-    <div className="inline-flex rounded-card bg-slate-raised p-1" role="radiogroup">
+    <div className={`inline-flex rounded-card bg-slate-raised p-1 ${className}`} role="radiogroup">
       {options.map((o) => (
         <button
           key={o.id}
@@ -181,7 +182,7 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
             click();
             onChange(o.id);
           }}
-          className={`press relative flex items-center gap-1.5 rounded-chip px-3 py-1.5 text-[13px] ${o.id === value ? "text-on-accent" : "text-muted hover:text-text"}`}
+          className={`press relative flex items-center gap-1.5 whitespace-nowrap rounded-chip px-3 py-1.5 text-[13px] ${o.id === value ? "text-on-accent" : "text-muted hover:text-text"}`}
         >
           {o.id === value && <motion.span layoutId={`seg-${group}`} className="absolute inset-0 rounded-chip bg-copper" transition={{ type: "spring", stiffness: 500, damping: 36 }} />}
           {o.icon && <o.icon className="relative size-3.5" aria-hidden />}
@@ -254,7 +255,7 @@ export function Modal({ open, onClose, title, children, width = "w-[600px]", foo
           >
             <div className="flex items-center justify-between border-b border-slate-line/70 px-6 py-4">
               <h2 className="text-[18px] font-bold">{title}</h2>
-              <IconButton icon={X} label="Close" onClick={onClose} />
+              <IconButton icon={X} label={tr("Close")} onClick={onClose} />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
             {footer && <div className="flex justify-end gap-2 border-t border-slate-line/70 px-6 py-4">{footer}</div>}
@@ -271,7 +272,7 @@ export function Ring({ value, size = 40 }: { value: number; size?: number }) {
   const c = 2 * Math.PI * r;
   const tone = value >= 0.75 ? "var(--accent)" : value >= 0.5 ? "#e3b341" : "#e5484d";
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label={`${Math.round(value * 100)}% match`} role="img">
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-label={tr("{n0}% match", { n0: Math.round(value * 100) })} role="img">
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--line)" strokeWidth="4" />
       <motion.circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={tone} strokeWidth="4" strokeLinecap="round" strokeDasharray={c} initial={{ strokeDashoffset: c }} animate={{ strokeDashoffset: c * (1 - value) }} transition={{ duration: 0.9, ease: "easeOut" }} transform={`rotate(-90 ${size / 2} ${size / 2})`} />
       <text x="50%" y="54%" textAnchor="middle" dominantBaseline="middle" fontSize={size * 0.28} fill="var(--text)" fontWeight="700">

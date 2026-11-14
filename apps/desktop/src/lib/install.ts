@@ -12,6 +12,7 @@ import { mrToResolved, pickBestVersion } from "@ember/content-engine";
 import { modrinth, transferEngine } from "./clients";
 import { api, type Instance, type ServerView } from "./ipc";
 import { PLUGIN_LOADERS } from "@ember/content-engine";
+import { tr } from "./i18n";
 
 export interface InstallTarget {
   instance?: Instance;
@@ -32,33 +33,33 @@ const loadersFor = (i: Instance) => (i.loader === "quilt" ? ["quilt", "fabric"] 
 export async function installProject(category: ContentCategory, project: ProjectLike, target: InstallTarget): Promise<string> {
   if (category === "modpacks") {
     const best = pickBestVersion(await modrinth.projectVersions(project.id));
-    if (!best) throw new Error("This modpack has no downloadable release yet.");
+    if (!best) throw new Error(tr("This modpack has no downloadable release yet."));
     const file = best.files.find((f) => f.primary) ?? best.files[0]!;
     const res = await api.installModpack({ url: file.url, sha1: file.hashes.sha1, name: project.title, icon: project.iconUrl, projectId: project.id, versionId: best.id });
-    return `Created “${res.instance.name}” with ${res.files} files.`;
+    return tr("Created “{name}” with {files} files.", { name: res.instance.name, files: res.files });
   }
 
   if (category === "plugins") {
     const server = target.server;
-    if (!server) throw new Error("Pick a server to install this plugin on.");
+    if (!server) throw new Error(tr("Pick a server to install this plugin on."));
     const loaders = server.kind === "paper" ? PLUGIN_LOADERS : ["fabric"];
     const best = pickBestVersion(await modrinth.projectVersions(project.id, loaders, [server.gameVersion]));
-    if (!best) throw new Error(`No build for ${server.kind === "paper" ? "Paper" : "Fabric"} ${server.gameVersion}.`);
+    if (!best) throw new Error(tr("No build for {n0} {gameVersion}.", { n0: server.kind === "paper" ? "Paper" : "Fabric", gameVersion: server.gameVersion }));
     await api.serverInstallFiles(server.id, [mrToResolved(best, project.title, project.slug)]);
-    return `Installed on ${server.name}. Restart the server to load it.`;
+    return tr("Installed on {name}. Restart the server to load it.", { name: server.name });
   }
 
   const inst = target.instance;
-  if (!inst) throw new Error("Pick an instance first.");
+  if (!inst) throw new Error(tr("Pick an instance first."));
   const loaders = category === "mods" ? loadersFor(inst) : undefined;
   const best = pickBestVersion(await modrinth.projectVersions(project.id, loaders, [inst.gameVersion]));
-  if (!best) throw new Error(`No build of ${project.title} for Minecraft ${inst.gameVersion}${category === "mods" ? ` (${inst.loader})` : ""}.`);
+  if (!best) throw new Error(tr("No build of {title} for Minecraft {gameVersion}{n2}.", { title: project.title, gameVersion: inst.gameVersion, n2: category === "mods" ? ` (${inst.loader})` : "" }));
   const file = mrToResolved(best, project.title, project.slug);
 
   if (category === "datapacks") {
-    if (!target.world) throw new Error("Pick a world for this data pack.");
+    if (!target.world) throw new Error(tr("Pick a world for this data pack."));
     await api.installFiles(inst.id, [file], `world:${target.world}`);
-    return `Added to the world “${target.world}”.`;
+    return tr("Added to the world “{world}”.", { world: target.world });
   }
 
   const dir = category === "mods" ? "mods" : category === "shaders" ? "shaderpacks" : "resourcepacks";
@@ -71,21 +72,21 @@ export async function installProject(category: ContentCategory, project: Project
 
   let extra = "";
   if (category === "shaders") extra = await ensureIris(inst);
-  if (category === "mods" && files.length > 1) extra = ` Also added ${files.slice(1).map((f) => f.projectName).join(", ")}.`;
-  return `Installed into ${inst.name}.${extra}`;
+  if (category === "mods" && files.length > 1) extra = tr(" Also added {n0}.", { n0: files.slice(1).map((f) => f.projectName).join(", ") });
+  return tr("Installed into {name}.{extra}", { name: inst.name, extra });
 }
 
 /** Shader packs need Iris (Fabric/Quilt/NeoForge). Add it if the instance doesn't have it. */
 export async function ensureIris(inst: Instance): Promise<string> {
-  if (inst.loader === "vanilla") return " Note: shaders need a mod loader; this instance is vanilla.";
+  if (inst.loader === "vanilla") return tr(" Note: shaders need a mod loader; this instance is vanilla.");
   const mods = await api.listContent(inst.id, "mods").catch(() => []);
   if (mods.some((m) => /iris|oculus/i.test(`${m.name ?? ""} ${m.fileName}`))) return "";
   const best = pickBestVersion(await modrinth.projectVersions("iris", loadersFor(inst), [inst.gameVersion]));
-  if (!best) return " Iris (needed for shaders) has no build for this version yet.";
+  if (!best) return tr(" Iris (needed for shaders) has no build for this version yet.");
   const iris = mrToResolved(best, "Iris Shaders", "iris");
   const deps = await transferEngine(() => {}).resolveDependencies([iris], { gameVersion: inst.gameVersion, loader: inst.loader });
   await api.installFiles(inst.id, [iris, ...deps], "mods");
-  return " Iris was added too, so the shader works. Pick it in Options → Video → Shader Packs.";
+  return tr(" Iris was added too, so the shader works. Pick it in Options → Video → Shader Packs.");
 }
 
 /** Which instances can take this category at all. */
@@ -99,10 +100,10 @@ export function compatibleInstances(category: ContentCategory, instances: Instan
  * its version; Fabric mods bring their required dependencies. Returns a short summary.
  */
 export async function installToServer(server: ServerView, project: ProjectLike): Promise<string> {
-  if (server.kind === "vanilla") throw new Error("Vanilla servers can't run mods or plugins.");
+  if (server.kind === "vanilla") throw new Error(tr("Vanilla servers can't run mods or plugins."));
   const loaders = server.kind === "paper" ? PLUGIN_LOADERS : ["fabric"];
   const best = pickBestVersion(await modrinth.projectVersions(project.id, loaders, [server.gameVersion]));
-  if (!best) throw new Error(`No ${server.kind === "paper" ? "Paper" : "Fabric"} build for ${server.gameVersion} yet.`);
+  if (!best) throw new Error(tr("No {n0} build for {gameVersion} yet.", { n0: server.kind === "paper" ? "Paper" : "Fabric", gameVersion: server.gameVersion }));
   const files: ResolvedFile[] = [mrToResolved(best, project.title, project.slug)];
   if (server.kind === "fabric") {
     const deps = await transferEngine(() => {}).resolveDependencies(files, { gameVersion: server.gameVersion, loader: "fabric" }).catch(() => []);
@@ -110,5 +111,5 @@ export async function installToServer(server: ServerView, project: ProjectLike):
   }
   await api.serverInstallFiles(server.id, files);
   const extra = files.length > 1 ? ` (+${files.length - 1} required)` : "";
-  return `Added to ${server.name}${extra}.${server.running ? " Restart the server to load it." : ""}`;
+  return tr("Added to {name}{extra}.{n2}", { name: server.name, extra, n2: server.running ? tr(" Restart the server to load it.") : "" });
 }

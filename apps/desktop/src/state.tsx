@@ -4,6 +4,7 @@ import { api, errorCode, onEvent, type AccountSummary, type Instance, type Setti
 import { applyAppearance, DEFAULT_APPEARANCE, normalise, type Appearance } from "./lib/appearance";
 import { setSoundsEnabled, success, failure } from "./lib/sounds";
 import type { ContentHit } from "@ember/content-engine";
+import { language, languageChosen, rememberLanguage, tr } from "./lib/i18n";
 
 // ---------------------------------------------------------------- query client
 /** Discover results stay fresh for 5 minutes and are kept for 30, so revisits are instant. */
@@ -57,6 +58,8 @@ interface AppCtx {
   project: ProjectRef | null;
   openProject: (p: ProjectRef | null) => void;
   tourOpen: boolean;
+  languageOpen: boolean;
+  setLanguageOpen: (v: boolean) => void;
   setTourOpen: (v: boolean) => void;
 }
 
@@ -82,6 +85,7 @@ function AppState({ children }: { children: ReactNode }) {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [project, openProject] = useState<ProjectRef | null>(null);
   const [tourOpen, setTourOpen] = useState(false);
+  const [languageOpen, setLanguageOpen] = useState(false);
   const toastId = useRef(1);
   const saveTimer = useRef<number>(undefined);
 
@@ -113,7 +117,17 @@ function AppState({ children }: { children: ReactNode }) {
         setAppearanceState(a);
         applyAppearance(a);
         setSoundsEnabled(a.sounds);
-        if (!s.onboarded) setTourOpen(true);
+        // Language first: settings.json is the source of truth, localStorage lets the
+        // first paint already be in the right language.
+        const chosen = a.language ?? (languageChosen() ? language() : undefined);
+        if (!chosen) setLanguageOpen(true);
+        else if (chosen !== language()) {
+          rememberLanguage(chosen);
+          window.location.reload();
+        } else {
+          if (!a.language) api.saveSettings({ ...s, ui: { ...a, language: chosen } }).then(setSettingsState).catch(() => {});
+          if (!s.onboarded) setTourOpen(true);
+        }
       })
       .catch(() => applyAppearance(DEFAULT_APPEARANCE));
   }, []);
@@ -148,9 +162,9 @@ function AppState({ children }: { children: ReactNode }) {
         setLaunching(({ [p.instanceId]: _gone, ...rest }) => rest);
         refresh();
         if (p.crashReport || (p.code !== null && p.code !== 0)) {
-          toast({ title: "The game closed unexpectedly", body: p.crashReport ? "A crash report was saved in the instance's crash-reports folder." : `Exit code ${p.code}. Check the Logs tab for details.`, tone: "error" });
+          toast({ title: tr("The game closed unexpectedly"), body: p.crashReport ? tr("A crash report was saved in the instance's crash-reports folder.") : tr("Exit code {code}. Check the Logs tab for details.", { code: p.code }), tone: "error" });
         } else if (p.minutes > 0) {
-          toast({ title: "Thanks for playing", body: `Session: ${p.minutes} min`, tone: "info" });
+          toast({ title: tr("Thanks for playing"), body: tr("Session: {minutes} min", { minutes: p.minutes }), tone: "info" });
         }
       }),
     ];
@@ -167,8 +181,8 @@ function AppState({ children }: { children: ReactNode }) {
         const c = errorCode(e);
         toast({
           tone: "error",
-          title: c === "not_signed_in" || c === "no_client_id" ? "Sign in first" : c === "app_not_approved" ? "Waiting for Mojang's approval" : `${instance.name} didn't start`,
-          body: c === "not_signed_in" || c === "no_client_id" ? "Sign in with your Microsoft account (bottom left) so Minecraft knows it's you." : String(e),
+          title: c === "not_signed_in" || c === "no_client_id" ? tr("Sign in first") : c === "app_not_approved" ? tr("Waiting for Mojang's approval") : tr("{name} didn't start", { name: instance.name }),
+          body: c === "not_signed_in" || c === "no_client_id" ? tr("Sign in with your Microsoft account (bottom left) so Minecraft knows it's you.") : String(e),
         });
       }
     },
@@ -211,8 +225,10 @@ function AppState({ children }: { children: ReactNode }) {
       openProject,
       tourOpen,
       setTourOpen,
+      languageOpen,
+      setLanguageOpen,
     }),
-    [instancesQ.data, refresh, account, settings, setSettings, appearance, setAppearance, launching, play, toasts, toast, updateToast, dismiss, newInstanceOpen, paletteOpen, project, tourOpen],
+    [instancesQ.data, refresh, account, settings, setSettings, appearance, setAppearance, launching, play, toasts, toast, updateToast, dismiss, newInstanceOpen, paletteOpen, project, tourOpen, languageOpen],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

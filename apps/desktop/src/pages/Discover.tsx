@@ -13,9 +13,10 @@ import { PAGE_SIZE, isInstalled, prefetchDiscover, prefetchProject, useDiscover,
 import { useApp } from "../state";
 import { Empty, IconButton, Segmented, Skeleton, inputClass, selectClass } from "../components/ui";
 import { click } from "../lib/sounds";
+import { tr, trn } from "../lib/i18n";
 
 type Sort = DiscoverOpts["sort"];
-const SORT_LABEL: Record<Sort, string> = { relevance: "Best match", downloads: "Most downloaded", follows: "Most loved", updated: "Recently updated" };
+const SORT_LABEL: Record<Sort, string> = { relevance: tr("Best match"), downloads: tr("Most downloaded"), follows: tr("Most loved"), updated: tr("Recently updated") };
 
 export function Discover() {
   const { category: catParam } = useParams();
@@ -59,7 +60,7 @@ export function Discover() {
   return (
     <div className="mx-auto max-w-6xl px-6 pb-10 pt-2">
       <motion.header initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mb-5">
-        <h1 className="text-[30px] font-bold tracking-tight">Discover</h1>
+        <h1 className="text-[30px] font-bold tracking-tight">{tr("Discover")}</h1>
         <p className="mt-1 text-muted">{cat.blurb}</p>
       </motion.header>
 
@@ -101,37 +102,37 @@ export function Discover() {
                 return p;
               }, { replace: true });
             }}
-            placeholder={`Search ${cat.label.toLowerCase()}`}
-            aria-label={`Search ${cat.label}`}
+            placeholder={tr("Search {n0}", { n0: cat.label.toLowerCase() })}
+            aria-label={tr("Search {label}", { label: cat.label })}
             className={`${inputClass} pl-9`}
           />
         </div>
         {forInstance && targets.length > 0 && (
-          <select aria-label="Show results that work with" value={target?.id} onChange={(e) => setTargetId(e.target.value)} className={selectClass}>
-            {targets.map((i) => <option key={i.id} value={i.id}>For {i.name} ({i.gameVersion})</option>)}
+          <select aria-label={tr("Show results that work with")} value={target?.id} onChange={(e) => setTargetId(e.target.value)} className={selectClass}>
+            {targets.map((i) => <option key={i.id} value={i.id}>{tr("For {name} ({gameVersion})", { name: i.name, gameVersion: i.gameVersion })}</option>)}
           </select>
         )}
-        <select aria-label="Sort by" value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={selectClass}>
+        <select aria-label={tr("Sort by")} value={sort} onChange={(e) => setSort(e.target.value as Sort)} className={selectClass}>
           {(debounced ? (["relevance", "downloads", "follows", "updated"] as Sort[]) : (["downloads", "follows", "updated"] as Sort[])).map((s) => <option key={s} value={s}>{SORT_LABEL[s]}</option>)}
         </select>
-        {curseforge && <Segmented<ContentSource> value={source} onChange={setSource} options={[{ id: "modrinth", label: "Modrinth" }, { id: "curseforge", label: "CurseForge" }]} />}
-        <IconButton icon={appearance.discoverLayout === "grid" ? List : LayoutGrid} label={appearance.discoverLayout === "grid" ? "List view" : "Grid view"} onClick={() => setAppearance({ discoverLayout: appearance.discoverLayout === "grid" ? "list" : "grid" })} />
+        {curseforge && <Segmented<ContentSource> value={source} onChange={setSource} options={[{ id: "modrinth", label: tr("Modrinth") }, { id: "curseforge", label: tr("CurseForge") }]} />}
+        <IconButton icon={appearance.discoverLayout === "grid" ? List : LayoutGrid} label={appearance.discoverLayout === "grid" ? tr("List view") : tr("Grid view")} onClick={() => setAppearance({ discoverLayout: appearance.discoverLayout === "grid" ? "list" : "grid" })} />
       </div>
 
       {forInstance && target && params.get("instance") === target.id && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 flex items-center gap-3 rounded-panel border border-copper/30 bg-copper/10 px-4 py-3 text-[14px]">
           <Download className="size-4 text-copper" />
-          <span className="flex-1">Adding to <b>{target.name}</b> ({target.gameVersion}{target.loader !== "vanilla" ? `, ${target.loader}` : ""}). Only things that work with it are shown; ones it already has are marked <b>Installed</b>.</span>
-          <button type="button" className="press rounded-chip px-3 py-1 text-[13px] text-muted hover:text-text" onClick={() => navigate(`/instance/${target.id}`)}>Back to instance</button>
+          <span className="flex-1">{trn(tr("Adding to {b} ({gameVersion}"), { b: <b>{target.name}</b>, gameVersion: target.gameVersion })}{target.loader !== "vanilla" ? `, ${target.loader}` : ""}{trn(tr("). Only things that work with it are shown; ones it already has are marked {b}."), { b: <b>{tr("Installed")}</b> })}</span>
+          <button type="button" className="press rounded-chip px-3 py-1 text-[13px] text-muted hover:text-text" onClick={() => navigate(`/instance/${target.id}`)}>{tr("Back to instance")}</button>
         </motion.div>
       )}
       {cat.id === "modpacks" && !debounced && sort === "follows" && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mb-4 flex items-center gap-3 rounded-panel border border-gold/30 bg-gold/8 px-4 py-3 text-[14px]">
-          <Trophy className="size-5 text-gold" /> The best-loved modpacks on Modrinth, ranked by how many players follow them. Install creates a ready-to-play instance.
+          <Trophy className="size-5 text-gold" /> {tr("The best-loved modpacks on Modrinth, ranked by how many players follow them. Install creates a ready-to-play instance.")}
         </motion.div>
       )}
-      {cat.id === "shaders" && <Hint>Installing a shader also adds <b>Iris</b> to the instance when it's missing, so it just works.</Hint>}
-      {cat.id === "plugins" && <Hint>Plugins run on a <b>Paper server</b>. Install them straight onto one of your servers from the Servers page.</Hint>}
+      {cat.id === "shaders" && <Hint>{trn(tr("Installing a shader also adds {b} to the instance when it's missing, so it just works."), { b: <b>{tr("Iris")}</b> })}</Hint>}
+      {cat.id === "plugins" && <Hint>{trn(tr("Plugins run on a {b}. Install them straight onto one of your servers from the Servers page."), { b: <b>{tr("Paper server")}</b> })}</Hint>}
 
       <Results
         key={`${cat.id}-${source}`}
@@ -178,12 +179,12 @@ function Results({ category, source, pages, optsFor, onMore, target, onOpen, toa
     return () => io.disconnect();
   }, [hasMore, onMore, pages]);
 
-  if (first.isError) return <Empty icon={Search} title="Couldn't reach Modrinth">Check your connection and try again.</Empty>;
+  if (first.isError) return <Empty icon={Search} title={tr("Couldn't reach Modrinth")}>{tr("Check your connection and try again.")}</Empty>;
 
   return (
     <>
       <p className="mb-3 text-[13px] text-muted" aria-live="polite">
-        {first.isLoading ? "Loading…" : `${compact(total)} results${target && category !== "plugins" && category !== "modpacks" ? ` for ${target.gameVersion}` : ""}`}
+        {first.isLoading ? tr("Loading…") : (target && category !== "plugins" && category !== "modpacks" ? tr("{n} results for {gameVersion}", { n: compact(total), gameVersion: target.gameVersion }) : tr("{n} results", { n: compact(total) }))}
         {first.isFetching && !first.isLoading && <Loader2 className="ml-2 inline size-3.5 animate-spin" />}
       </p>
       <div className={appearance.discoverLayout === "grid" ? "grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3" : "flex flex-col gap-2"}>
@@ -222,16 +223,16 @@ export function ProjectCard({ hit, index, category, target, installed, onOpen, t
     if (hit.source !== "modrinth") return onOpen(hit);
     if (category === "datapacks" || (category === "plugins" && paper.length !== 1) || (category !== "modpacks" && category !== "plugins" && !target)) return onOpen(hit);
     setState("busy");
-    const t = toast({ title: `Installing ${hit.title}`, tone: "progress" });
+    const t = toast({ title: tr("Installing {title}", { title: hit.title }), tone: "progress" });
     try {
       const summary = await installProject(category, hit, { instance: target, server: paper[0] });
       setState("done");
       if (category === "modpacks") refresh();
       qc.invalidateQueries({ queryKey: ["content"] });
-      toast({ title: `${hit.title} installed`, body: summary, tone: "success", action: { label: "What does it do?", run: () => onOpen(hit) } });
+      toast({ title: tr("{title} installed", { title: hit.title }), body: summary, tone: "success", action: { label: tr("What does it do?"), run: () => onOpen(hit) } });
     } catch (err) {
       setState("idle");
-      toast({ title: `Couldn't install ${hit.title}`, body: err instanceof Error ? err.message : String(err), tone: "error" });
+      toast({ title: tr("Couldn't install {title}", { title: hit.title }), body: err instanceof Error ? err.message : String(err), tone: "error" });
     } finally {
       dismiss(t);
     }
@@ -259,7 +260,7 @@ export function ProjectCard({ hit, index, category, target, installed, onOpen, t
         {hit.iconUrl ? <motion.img layoutId={`icon-${hit.id}`} src={hit.iconUrl} alt="" loading="lazy" className="size-14 shrink-0 rounded-card bg-slate-raised object-cover transition-transform duration-300 group-hover:scale-105 group-hover:-rotate-2" /> : <div className="size-14 shrink-0 rounded-card bg-slate-raised" />}
         <div className="min-w-0 flex-1">
           <h3 className="truncate text-[15px] font-bold">{hit.title}</h3>
-          <p className="truncate text-[12px] text-muted">by {hit.author}</p>
+          <p className="truncate text-[12px] text-muted">{tr("by {author}", { author: hit.author })}</p>
           {!grid && <p className="mt-0.5 line-clamp-1 text-[13px] text-muted">{hit.description}</p>}
         </div>
       </div>
@@ -267,18 +268,18 @@ export function ProjectCard({ hit, index, category, target, installed, onOpen, t
       <div className={`relative flex items-center gap-3 text-[12px] text-muted ${grid ? "mt-3" : ""}`}>
         <span className="flex items-center gap-1"><Download className="size-3.5" /> {compact(hit.downloads)}</span>
         {grid && <span className="flex items-center gap-1"><Heart className="size-3.5" /> {compact(hit.follows)}</span>}
-        {!grid && <span className="truncate">Updated {ago(hit.updatedAt)}</span>}
+        {!grid && <span className="truncate">{tr("Updated {updatedAt}", { updatedAt: ago(hit.updatedAt) })}</span>}
         <span className="ml-auto flex items-center gap-1">
-          <button type="button" onClick={toggleFav} aria-label={isFav ? "Remove from favorites" : "Add to favorites"} className="press grid size-8 place-items-center rounded-chip hover:bg-slate-raised">
+          <button type="button" onClick={toggleFav} aria-label={isFav ? tr("Remove from favorites") : tr("Add to favorites")} className="press grid size-8 place-items-center rounded-chip hover:bg-slate-raised">
             <AnimatePresence mode="wait" initial={false}>
               <motion.span key={String(isFav)} initial={{ scale: 0.4, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} exit={{ scale: 0.4 }} transition={{ type: "spring", stiffness: 600, damping: 18 }}>
                 <Heart className={`size-4 ${isFav ? "text-redstone" : ""}`} fill={isFav ? "currentColor" : "none"} />
               </motion.span>
             </AnimatePresence>
           </button>
-          <button type="button" onClick={quickInstall} disabled={state !== "idle"} title={installed && target ? `Already in ${target.name}` : undefined} className={`press press-accent flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip px-3 py-1.5 text-[13px] font-medium ${state === "done" ? "bg-copper/15 text-copper" : "bg-copper text-on-accent"}`}>
+          <button type="button" onClick={quickInstall} disabled={state !== "idle"} title={installed && target ? tr("Already in {name}", { name: target.name }) : undefined} className={`press press-accent flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-chip px-3 py-1.5 text-[13px] font-medium ${state === "done" ? "bg-copper/15 text-copper" : "bg-copper text-on-accent"}`}>
             {state === "busy" ? <Loader2 className="size-3.5 animate-spin" /> : state === "done" ? <Check className="size-3.5" /> : <Download className="size-3.5" />}
-            {state === "done" ? "Installed" : "Install"}
+            {state === "done" ? tr("Installed") : tr("Install")}
           </button>
         </span>
       </div>

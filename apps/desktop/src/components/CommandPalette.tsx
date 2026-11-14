@@ -7,6 +7,7 @@ import { modrinth } from "../lib/clients";
 import { useApp } from "../state";
 import { CATEGORIES } from "../lib/categories";
 import { compact } from "../lib/format";
+import { tr } from "../lib/i18n";
 
 interface Item {
   id: string;
@@ -57,28 +58,28 @@ export function CommandPalette() {
   const items = useMemo<Item[]>(() => {
     const local: Item[] = [
       ...instances.flatMap((i) => [
-        { id: `play-${i.id}`, group: "Instances", label: `Play ${i.name}`, hint: `${i.gameVersion} · ${i.loader}`, icon: Play, run: () => { play(i); close(); } },
-        { id: `open-${i.id}`, group: "Instances", label: `Open ${i.name}`, hint: "Mods, worlds, settings", icon: Box, run: go(`/instance/${i.id}`) },
+        { id: `play-${i.id}`, group: tr("Instances"), label: tr("Play {name}", { name: i.name }), hint: `${i.gameVersion} · ${i.loader}`, icon: Play, run: () => { play(i); close(); } },
+        { id: `open-${i.id}`, group: tr("Instances"), label: tr("Open {name}", { name: i.name }), hint: tr("Mods, worlds, settings"), icon: Box, run: go(`/instance/${i.id}`) },
       ]),
-      { id: "home", group: "Go to", label: "Home", icon: Home, run: go("/") },
-      ...CATEGORIES.map((c) => ({ id: `d-${c.id}`, group: "Go to", label: `Discover ${c.label.toLowerCase()}`, icon: c.icon, run: go(`/discover/${c.id}`) })),
-      { id: "fav", group: "Go to", label: "Favorites", icon: Heart, run: go("/favorites") },
-      { id: "servers", group: "Go to", label: "Servers", icon: Server, run: go("/servers") },
-      { id: "transfer", group: "Go to", label: "Transfer mods to a new version", icon: ArrowRightLeft, run: go("/transfer") },
-      { id: "new", group: "Actions", label: "New instance", icon: Plus, run: () => { setNewInstanceOpen(true); close(); } },
-      { id: "new-server", group: "Actions", label: "New server (play with friends)", icon: Users, run: go("/servers?new=1") },
-      { id: "theme", group: "Actions", label: appearance.theme === "calcite" ? "Switch to dark theme" : "Switch to light theme", icon: appearance.theme === "calcite" ? Moon : Sun, run: () => setAppearance({ theme: appearance.theme === "calcite" ? "deepslate" : "calcite" }) },
-      { id: "s-appearance", group: "Settings", label: "Appearance: theme, accent, glass, animations", icon: Palette, run: go("/settings?tab=appearance") },
-      { id: "s-profiles", group: "Settings", label: "Game profiles: keybinds, FOV, video", icon: Sparkles, run: go("/settings?tab=profiles") },
-      { id: "s-account", group: "Settings", label: "Account: skins, capes, name, stats, switch account", icon: Settings, run: go("/account") },
-      { id: "s-launcher", group: "Settings", label: "Launcher: memory, Java, behaviour", icon: Settings, run: go("/settings?tab=launcher") },
+      { id: "home", group: tr("Go to"), label: tr("Home"), icon: Home, run: go("/") },
+      ...CATEGORIES.map((c) => ({ id: `d-${c.id}`, group: tr("Go to"), label: tr("Discover {n0}", { n0: c.label.toLowerCase() }), icon: c.icon, run: go(`/discover/${c.id}`) })),
+      { id: "fav", group: tr("Go to"), label: tr("Favorites"), icon: Heart, run: go("/favorites") },
+      { id: "servers", group: tr("Go to"), label: tr("Servers"), icon: Server, run: go("/servers") },
+      { id: "transfer", group: tr("Go to"), label: tr("Transfer mods to a new version"), icon: ArrowRightLeft, run: go("/transfer") },
+      { id: "new", group: tr("Actions"), label: tr("New instance"), icon: Plus, run: () => { setNewInstanceOpen(true); close(); } },
+      { id: "new-server", group: tr("Actions"), label: tr("New server (play with friends)"), icon: Users, run: go("/servers?new=1") },
+      { id: "theme", group: tr("Actions"), label: appearance.theme === "calcite" ? tr("Switch to dark theme") : tr("Switch to light theme"), icon: appearance.theme === "calcite" ? Moon : Sun, run: () => setAppearance({ theme: appearance.theme === "calcite" ? "deepslate" : "calcite" }) },
+      { id: "s-appearance", group: tr("Settings"), label: tr("Appearance: theme, accent, glass, animations"), icon: Palette, run: go("/settings?tab=appearance") },
+      { id: "s-profiles", group: tr("Settings"), label: tr("Game profiles: keybinds, FOV, video"), icon: Sparkles, run: go("/settings?tab=profiles") },
+      { id: "s-account", group: tr("Settings"), label: tr("Account: skins, capes, name, stats, switch account"), icon: Settings, run: go("/account") },
+      { id: "s-launcher", group: tr("Settings"), label: tr("Launcher: memory, Java, behaviour"), icon: Settings, run: go("/settings?tab=launcher") },
     ];
-    const filtered = q.trim() ? local.filter((i) => matches(q, `${i.label} ${i.hint ?? ""}`)) : local.filter((i) => i.group !== "Settings").slice(0, 12);
+    const filtered = q.trim() ? local.filter((i) => matches(q, `${i.label} ${i.hint ?? ""}`)) : local.filter((i) => i.group !== tr("Settings")).slice(0, 12);
     const web: Item[] = (remote.data?.hits ?? []).map((h) => ({
       id: `mr-${h.project_id}`,
-      group: "On Modrinth",
+      group: tr("On Modrinth"),
       label: h.title,
-      hint: `${h.project_type} · ${compact(h.downloads)} downloads`,
+      hint: tr("{project_type} · {downloads} downloads", { project_type: h.project_type, downloads: compact(h.downloads) }),
       image: h.icon_url ?? undefined,
       icon: h.project_type === "modpack" ? Package : Compass,
       run: () => {
@@ -122,16 +123,16 @@ export function CommandPalette() {
             transition={{ type: "spring", stiffness: 450, damping: 34 }}
             className="glass glass-strong relative flex max-h-[64vh] w-[640px] max-w-full flex-col overflow-hidden rounded-panel"
             role="dialog"
-            aria-label="Search"
+            aria-label={tr("Search")}
             onKeyDown={onKey}
           >
             <div className="flex items-center gap-3 border-b border-slate-line/70 px-5 py-4">
               <Search className="size-5 text-copper" aria-hidden />
-              <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search instances, mods, modpacks, settings…" className="flex-1 bg-transparent text-[16px] text-text placeholder:text-muted focus:outline-none" aria-label="Search" role="combobox" aria-expanded aria-controls="palette-list" />
+              <input ref={input} value={q} onChange={(e) => setQ(e.target.value)} placeholder={tr("Search instances, mods, modpacks, settings…")} className="flex-1 bg-transparent text-[16px] text-text placeholder:text-muted focus:outline-none" aria-label={tr("Search")} role="combobox" aria-expanded aria-controls="palette-list" />
               {remote.isFetching && <span className="size-4 animate-spin rounded-full border-2 border-copper border-r-transparent" />}
             </div>
             <div ref={listRef} id="palette-list" role="listbox" className="min-h-0 flex-1 overflow-y-auto p-2">
-              {items.length === 0 && <p className="px-3 py-8 text-center text-[14px] text-muted">{debounced.length >= 2 ? "Nothing found." : "Type to search."}</p>}
+              {items.length === 0 && <p className="px-3 py-8 text-center text-[14px] text-muted">{debounced.length >= 2 ? tr("Nothing found.") : tr("Type to search.")}</p>}
               {items.map((it, idx) => {
                 const header = it.group !== lastGroup ? it.group : null;
                 lastGroup = it.group;
@@ -161,9 +162,9 @@ export function CommandPalette() {
               })}
             </div>
             <div className="flex items-center gap-4 border-t border-slate-line/70 px-5 py-2.5 text-[12px] text-muted">
-              <span>↑↓ to move</span>
-              <span>Enter to open</span>
-              <span>Esc to close</span>
+              <span>{tr("↑↓ to move")}</span>
+              <span>{tr("Enter to open")}</span>
+              <span>{tr("Esc to close")}</span>
             </div>
           </motion.div>
         </motion.div>

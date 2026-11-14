@@ -17,6 +17,7 @@ import { Badge, Button, Empty, Field, Glass, IconButton, Modal, Skeleton, Slider
 import { AddContentPanel } from "../components/AddContentPanel";
 import { Console } from "../components/Console";
 import { PlayButton, instanceGradient, playTime } from "./Home";
+import { locale, tr, trn } from "../lib/i18n";
 
 type Tab = "overview" | "content" | "worlds" | "screenshots" | "settings" | "logs";
 
@@ -25,7 +26,7 @@ export function InstancePage() {
   const { instances, appearance } = useApp();
   const inst = instances.find((i) => i.id === id);
   const [tab, setTab] = useState<Tab>("overview");
-  if (!inst) return <div className="p-10"><Empty icon={Box} title="Instance not found">It may have been deleted.</Empty></div>;
+  if (!inst) return <div className="p-10"><Empty icon={Box} title={tr("Instance not found")}>{tr("It may have been deleted.")}</Empty></div>;
   return (
     <div className="mx-auto max-w-6xl px-6 pb-10 pt-2">
       <Header inst={inst} />
@@ -34,12 +35,12 @@ export function InstancePage() {
         value={tab}
         onChange={setTab}
         tabs={[
-          { id: "overview", label: "Overview", icon: Gauge },
-          { id: "content", label: "Mods", icon: Layers },
-          { id: "worlds", label: "Worlds", icon: Globe2 },
-          { id: "screenshots", label: "Screenshots", icon: Camera },
-          { id: "settings", label: "Settings", icon: Settings2 },
-          { id: "logs", label: "Logs", icon: ScrollText },
+          { id: "overview", label: tr("Overview"), icon: Gauge },
+          { id: "content", label: tr("Mods"), icon: Layers },
+          { id: "worlds", label: tr("Worlds"), icon: Globe2 },
+          { id: "screenshots", label: tr("Screenshots"), icon: Camera },
+          { id: "settings", label: tr("Settings"), icon: Settings2 },
+          { id: "logs", label: tr("Logs"), icon: ScrollText },
         ]}
       />
       <AnimatePresence mode="wait">
@@ -75,15 +76,15 @@ function Header({ inst }: { inst: Inst }) {
           <div>
             <h1 className="font-pixel text-[38px] leading-none text-white">{inst.name}</h1>
             <div className="mt-2 flex flex-wrap gap-2">
-              <Badge>Minecraft {inst.gameVersion}</Badge>
+              <Badge>{tr("Minecraft {gameVersion}", { gameVersion: inst.gameVersion })}</Badge>
               <Badge>{loaderName[inst.loader]}{inst.loaderVersion ? ` ${inst.loaderVersion}` : ""}</Badge>
               {inst.source?.title && <Badge tone="gold"><Package className="size-3" /> {inst.source.title}</Badge>}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <IconButton icon={Star} label={inst.favorite ? "Unpin" : "Pin to top"} active={inst.favorite} onClick={toggleFav} className="bg-black/20 text-white" />
-          <IconButton icon={FolderOpen} label="Open folder" onClick={() => api.openFolder(inst.id)} className="bg-black/20 text-white" />
+          <IconButton icon={Star} label={inst.favorite ? tr("Unpin") : tr("Pin to top")} active={inst.favorite} onClick={toggleFav} className="bg-black/20 text-white" />
+          <IconButton icon={FolderOpen} label={tr("Open folder")} onClick={() => api.openFolder(inst.id)} className="bg-black/20 text-white" />
           <PlayButton instance={inst} big />
         </div>
       </div>
@@ -96,10 +97,10 @@ function Overview({ inst, go }: { inst: Inst; go: (t: Tab) => void }) {
   const profiles = useProfiles();
   const profile = profiles.data?.profiles.find((p) => p.id === inst.gameProfile);
   const stats = [
-    { label: "Played", value: playTime(inst.playMinutes), icon: Clock },
-    { label: "Last played", value: ago(inst.lastPlayed), icon: Sparkles },
-    { label: "Mods", value: mods.data ? `${mods.data.filter((m) => m.enabled).length} active` : "…", icon: Layers },
-    { label: "Memory", value: `${(inst.memoryMb / 1024).toFixed(1)} GB`, icon: Gauge },
+    { label: tr("Played"), value: playTime(inst.playMinutes), icon: Clock },
+    { label: tr("Last played"), value: ago(inst.lastPlayed), icon: Sparkles },
+    { label: tr("Mods"), value: mods.data ? tr("{n} active", { n: mods.data.filter((m) => m.enabled).length }) : "…", icon: Layers },
+    { label: tr("Memory"), value: `${(inst.memoryMb / 1024).toFixed(1)} GB`, icon: Gauge },
   ];
   return (
     <div className="grid gap-4 md:grid-cols-3">
@@ -113,11 +114,11 @@ function Overview({ inst, go }: { inst: Inst; go: (t: Tab) => void }) {
         ))}
       </div>
       <Glass className="flex flex-col gap-3 p-5">
-        <h3 className="text-[15px] font-bold">Game settings</h3>
-        <p className="text-[13px] text-muted">{profile ? <>Uses the <b className="text-text">{profile.name}</b> profile: your keybinds, FOV and video settings are applied {inst.profileEveryLaunch ? "every launch" : "on first launch"}.</> : "No settings profile. The game starts with Minecraft's defaults."}</p>
-        <Button size="sm" onClick={() => go("settings")}>Change</Button>
-        <h3 className="mt-2 text-[15px] font-bold">In-game menu</h3>
-        <p className="text-[13px] text-muted">{inst.overlay && (inst.loader === "fabric" || inst.loader === "quilt") ? "Press Right Shift in game for HUD, zoom, fullbright and 50+ more tweaks." : "Available on Fabric and Quilt instances."}</p>
+        <h3 className="text-[15px] font-bold">{tr("Game settings")}</h3>
+        <p className="text-[13px] text-muted">{profile ? <>{trn(tr("Uses the {b} profile: your keybinds, FOV and video settings are applied"), { b: <b className="text-text">{profile.name}</b> })} {inst.profileEveryLaunch ? tr("every launch") : tr("on first launch")}.</> : tr("No settings profile. The game starts with Minecraft's defaults.")}</p>
+        <Button size="sm" onClick={() => go("settings")}>{tr("Change")}</Button>
+        <h3 className="mt-2 text-[15px] font-bold">{tr("In-game menu")}</h3>
+        <p className="text-[13px] text-muted">{inst.overlay && (inst.loader === "fabric" || inst.loader === "quilt") ? tr("Press Right Shift in game for HUD, zoom, fullbright and 50+ more tweaks.") : tr("Available on Fabric and Quilt instances.")}</p>
       </Glass>
     </div>
   );
@@ -126,9 +127,9 @@ function Overview({ inst, go }: { inst: Inst; go: (t: Tab) => void }) {
 // ---------------------------------------------------------------- content
 
 const DIRS = [
-  { id: "mods", label: "Mods", icon: Box },
-  { id: "resourcepacks", label: "Resource packs", icon: Image },
-  { id: "shaderpacks", label: "Shaders", icon: Sparkles },
+  { id: "mods", label: tr("Mods"), icon: Box },
+  { id: "resourcepacks", label: tr("Resource packs"), icon: Image },
+  { id: "shaderpacks", label: tr("Shaders"), icon: Sparkles },
 ] as const;
 type Dir = (typeof DIRS)[number]["id"];
 
@@ -152,7 +153,7 @@ function Content({ inst }: { inst: Inst }) {
   };
   const remove = async (f: ContentFile) => {
     await api.deleteContent(inst.id, dir, f.fileName);
-    toast({ title: `Removed ${f.name ?? f.fileName}`, tone: "info" });
+    toast({ title: tr("Removed {n0}", { n0: f.name ?? f.fileName }), tone: "info" });
     reload();
   };
   /** Find the file on Modrinth by hash and open its explanation. */
@@ -160,11 +161,11 @@ function Content({ inst }: { inst: Inst }) {
     try {
       const byHash = await modrinth.versionsFromHashes([f.sha1]);
       const v = byHash[f.sha1];
-      if (!v) return toast({ title: "Not on Modrinth", body: f.description ?? "This file isn't listed on Modrinth, so there's no page to show.", tone: "info" });
+      if (!v) return toast({ title: tr("Not on Modrinth"), body: f.description ?? tr("This file isn't listed on Modrinth, so there's no page to show."), tone: "info" });
       const p = await modrinth.project(v.project_id);
       if (p) openProject({ source: "modrinth", id: p.id, slug: p.slug, title: p.title, description: p.description, iconUrl: p.icon_url ?? undefined, downloads: p.downloads, follows: p.followers, category: dir === "mods" ? "mods" : dir === "shaderpacks" ? "shaders" : "resourcepacks" });
     } catch (e) {
-      toast({ title: "Couldn't look it up", body: String(e), tone: "error" });
+      toast({ title: tr("Couldn't look it up"), body: String(e), tone: "error" });
     }
   };
   const checkUpdates = async () => {
@@ -179,7 +180,7 @@ function Content({ inst }: { inst: Inst }) {
         if (v && !v.files.some((x) => x.hashes.sha1 === f.sha1)) found[f.fileName] = { versionId: v.id, number: v.version_number, file: mrToResolved(v, f.name ?? f.fileName) };
       }
       setUpdates(found);
-      toast({ title: Object.keys(found).length ? `${Object.keys(found).length} updates available` : "Everything is up to date", tone: Object.keys(found).length ? "info" : "success" });
+      toast({ title: Object.keys(found).length ? tr("{length} updates available", { length: Object.keys(found).length }) : tr("Everything is up to date"), tone: Object.keys(found).length ? "info" : "success" });
     } finally {
       setChecking(false);
     }
@@ -190,7 +191,7 @@ function Content({ inst }: { inst: Inst }) {
       await api.installFiles(inst.id, [u.file], dir);
       if (u.file.fileName !== oldName) await api.deleteContent(inst.id, dir, oldName);
     }
-    toast({ title: `Updated ${Object.keys(updates).length} files`, tone: "success" });
+    toast({ title: tr("Updated {length} files", { length: Object.keys(updates).length }), tone: "success" });
     setUpdates(null);
     reload();
   };
@@ -200,7 +201,7 @@ function Content({ inst }: { inst: Inst }) {
     const paths = Array.isArray(picked) ? picked : picked ? [picked] : [];
     if (!paths.length) return;
     const n = await api.importContent(inst.id, dir, paths as string[]);
-    toast({ title: `Added ${n} file${n === 1 ? "" : "s"}`, tone: "success" });
+    toast({ title: tr("Added {n} file{n1}", { n, n1: n === 1 ? "" : "s" }), tone: "success" });
     reload();
   };
 
@@ -208,17 +209,17 @@ function Content({ inst }: { inst: Inst }) {
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <Tabs<Dir> value={dir} onChange={(d) => { setDir(d); setUpdates(null); }} tabs={DIRS.map((d) => ({ ...d, count: d.id === dir ? q.data?.length : undefined }))} />
-        <Button variant="primary" className="ml-auto" icon={adding ? X : Plus} onClick={() => setAdding((a) => !a)}>{adding ? "Done adding" : `Add ${DIRS.find((d) => d.id === dir)!.label.toLowerCase()}`}</Button>
+        <Button variant="primary" className="ml-auto" icon={adding ? X : Plus} onClick={() => setAdding((a) => !a)}>{adding ? tr("Done adding") : tr("Add {n0}", { n0: DIRS.find((d) => d.id === dir)!.label.toLowerCase() })}</Button>
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-48 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={`Filter installed ${DIRS.find((d) => d.id === dir)!.label.toLowerCase()}`} className={`${inputClass} pl-9`} />
+          <input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder={tr("Filter installed {n0}", { n0: DIRS.find((d) => d.id === dir)!.label.toLowerCase() })} className={`${inputClass} pl-9`} />
         </div>
-        <Button icon={ArrowUpCircle} loading={checking} onClick={checkUpdates}>Check updates</Button>
-        <Button icon={FilePlus2} onClick={addFiles}>Add files</Button>
+        <Button icon={ArrowUpCircle} loading={checking} onClick={checkUpdates}>{tr("Check updates")}</Button>
+        <Button icon={FilePlus2} onClick={addFiles}>{tr("Add files")}</Button>
         <PackButton inst={inst} />
-        <Button icon={Compass} onClick={() => navigate(`/discover/${category}?instance=${inst.id}`)}>Browse all</Button>
+        <Button icon={Compass} onClick={() => navigate(`/discover/${category}?instance=${inst.id}`)}>{tr("Browse all")}</Button>
       </div>
       <AnimatePresence initial={false}>
         {adding && <AddContentPanel key={dir} inst={inst} category={category} onClose={() => setAdding(false)} />}
@@ -226,16 +227,16 @@ function Content({ inst }: { inst: Inst }) {
       <AnimatePresence>
         {updates && Object.keys(updates).length > 0 && (
           <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }} className="mb-4 flex items-center justify-between gap-3 overflow-hidden rounded-panel border border-copper/30 bg-copper/10 px-4 py-3 text-[14px]">
-            <span>{Object.keys(updates).length} updates for {inst.gameVersion} are ready.</span>
-            <Button variant="primary" size="sm" onClick={applyUpdates}>Update all</Button>
+            <span>{tr("{length} updates for {gameVersion} are ready.", { length: Object.keys(updates).length, gameVersion: inst.gameVersion })}</span>
+            <Button variant="primary" size="sm" onClick={applyUpdates}>{tr("Update all")}</Button>
           </motion.div>
         )}
       </AnimatePresence>
       {q.isLoading ? (
         <div className="space-y-2">{[...Array(5)].map((_, i) => <Skeleton key={i} className="h-16" />)}</div>
       ) : list.length === 0 ? (
-        <Empty icon={DIRS.find((d) => d.id === dir)!.icon} title={filter ? "No matches" : `No ${DIRS.find((d) => d.id === dir)!.label.toLowerCase()} yet`} action={!adding ? <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>Add some</Button> : undefined}>
-          Everything here goes only into “{inst.name}”.
+        <Empty icon={DIRS.find((d) => d.id === dir)!.icon} title={filter ? tr("No matches") : tr("No {n0} yet", { n0: DIRS.find((d) => d.id === dir)!.label.toLowerCase() })} action={!adding ? <Button variant="primary" icon={Plus} onClick={() => setAdding(true)}>{tr("Add some")}</Button> : undefined}>
+          {tr("Everything here goes only into “{name}”.", { name: inst.name })}
         </Empty>
       ) : (
         <ul className="flex flex-col gap-2">
@@ -246,16 +247,16 @@ function Content({ inst }: { inst: Inst }) {
                 <p className="flex items-center gap-2 truncate text-[15px] font-medium">
                   {f.name ?? f.fileName.replace(/\.(jar|zip)(\.disabled)?$/, "")}
                   {f.version && <span className="text-[12px] font-normal text-muted">{f.version}</span>}
-                  {f.fromBundle && <Badge tone="accent"><Gauge className="size-3" /> Performance</Badge>}
-                  {updates?.[f.fileName] && <Badge tone="gold">Update: {updates[f.fileName]!.number}</Badge>}
+                  {f.fromBundle && <Badge tone="accent"><Gauge className="size-3" /> {tr("Performance")}</Badge>}
+                  {updates?.[f.fileName] && <Badge tone="gold">{tr("Update: {number}", { number: updates[f.fileName]!.number })}</Badge>}
                 </p>
                 <p className="truncate text-[13px] text-muted">{f.description ?? f.fileName}</p>
               </div>
               <div className="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
-                <IconButton icon={BookOpen} label="What does it do?" onClick={() => explain(f)} />
-                <IconButton icon={Trash2} label="Remove" onClick={() => remove(f)} />
+                <IconButton icon={BookOpen} label={tr("What does it do?")} onClick={() => explain(f)} />
+                <IconButton icon={Trash2} label={tr("Remove")} onClick={() => remove(f)} />
               </div>
-              <Switch checked={f.enabled} onChange={() => toggle(f)} label={f.enabled ? "Enabled (click to turn off)" : "Disabled (click to turn on)"} />
+              <Switch checked={f.enabled} onChange={() => toggle(f)} label={f.enabled ? tr("Enabled (click to turn off)") : tr("Disabled (click to turn on)")} />
             </motion.li>
           ))}
         </ul>
@@ -274,14 +275,14 @@ function PackButton({ inst }: { inst: Inst }) {
   const [busy, setBusy] = useState<string | null>(null);
   const apply = async (p: WorldPack) => {
     setBusy(p.id);
-    const t = toast({ title: `Adding “${p.name}”`, tone: "progress" });
+    const t = toast({ title: tr("Adding “{name}”", { name: p.name }), tone: "progress" });
     try {
       const r = await applyWorldPack(p, inst);
       qc.invalidateQueries({ queryKey: ["content", inst.id] });
-      toast({ title: `“${p.name}” added`, body: summarise(r), tone: "success" });
+      toast({ title: tr("“{name}” added", { name: p.name }), body: summarise(r), tone: "success" });
       setOpen(false);
     } catch (e) {
-      toast({ title: "Couldn't apply the pack", body: String(e), tone: "error" });
+      toast({ title: tr("Couldn't apply the pack"), body: String(e), tone: "error" });
     } finally {
       dismiss(t);
       setBusy(null);
@@ -289,22 +290,22 @@ function PackButton({ inst }: { inst: Inst }) {
   };
   return (
     <>
-      <Button icon={Layers3} onClick={() => setOpen(true)}>World pack</Button>
-      <Modal open={open} onClose={() => setOpen(false)} title={`Add a world pack to ${inst.name}`}>
+      <Button icon={Layers3} onClick={() => setOpen(true)}>{tr("World pack")}</Button>
+      <Modal open={open} onClose={() => setOpen(false)} title={tr("Add a world pack to {name}", { name: inst.name })}>
         {packs.data?.length ? (
           <ul className="flex flex-col gap-2">
             {packs.data.map((p) => (
               <li key={p.id} className="flex items-center gap-3 rounded-card bg-slate-raised/50 p-3">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[14px] font-medium">{p.name}</p>
-                  <p className="truncate text-[12px] text-muted">{p.items.length} items{p.description ? ` · ${p.description}` : ""}</p>
+                  <p className="truncate text-[12px] text-muted">{tr("{length} items", { length: p.items.length })}{p.description ? ` · ${p.description}` : ""}</p>
                 </div>
-                <Button size="sm" variant="primary" icon={Plus} loading={busy === p.id} disabled={!!busy} onClick={() => apply(p)}>Add</Button>
+                <Button size="sm" variant="primary" icon={Plus} loading={busy === p.id} disabled={!!busy} onClick={() => apply(p)}>{tr("Add")}</Button>
               </li>
             ))}
           </ul>
         ) : (
-          <Empty icon={Layers3} title="No world packs yet" action={<Button variant="primary" onClick={() => navigate("/packs")}>Make one</Button>}>A world pack is your own reusable mix of mods, resource packs, data packs and shaders.</Empty>
+          <Empty icon={Layers3} title={tr("No world packs yet")} action={<Button variant="primary" onClick={() => navigate("/packs")}>{tr("Make one")}</Button>}>{tr("A world pack is your own reusable mix of mods, resource packs, data packs and shaders.")}</Empty>
         )}
       </Modal>
     </>
@@ -327,9 +328,9 @@ function Worlds({ inst }: { inst: Inst }) {
     try {
       await installProject("mods", { id: "e4mc", slug: "e4mc", title: "e4mc" }, { instance: inst });
       qc.invalidateQueries({ queryKey: ["content", inst.id, "mods"] });
-      toast({ title: "World sharing is on", body: "In game: Esc → Open to LAN → Start. A public address appears in chat; send it to your friends.", tone: "success" });
+      toast({ title: tr("World sharing is on"), body: tr("In game: Esc → Open to LAN → Start. A public address appears in chat; send it to your friends."), tone: "success" });
     } catch (e) {
-      toast({ title: "Couldn't enable sharing", body: e instanceof Error ? e.message : String(e), tone: "error" });
+      toast({ title: tr("Couldn't enable sharing"), body: e instanceof Error ? e.message : String(e), tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -342,25 +343,25 @@ function Worlds({ inst }: { inst: Inst }) {
         <div className="relative flex flex-wrap items-center gap-4">
           <span className="grid size-12 place-items-center rounded-card bg-copper/15 text-copper"><Globe2 className="size-6" /></span>
           <div className="min-w-0 flex-1">
-            <h3 className="text-[16px] font-bold">Let friends join from anywhere</h3>
+            <h3 className="text-[16px] font-bold">{tr("Let friends join from anywhere")}</h3>
             <p className="max-w-[70ch] text-[13px] text-muted">
               {hasE4mc
-                ? "Sharing is on. In game press Esc → Open to LAN → Start. A public address (like something.e4mc.link) appears in chat. Friends paste it into Multiplayer → Direct Connection. No router setup, and they don't need any mods."
+                ? tr("Sharing is on. In game press Esc → Open to LAN → Start. A public address (like something.e4mc.link) appears in chat. Friends paste it into Multiplayer → Direct Connection. No router setup, and they don't need any mods.")
                 : canShare
-                  ? "One click adds e4mc to this instance. Then Open to LAN gives you a public address anyone can join, even friends on a plain unmodded game."
-                  : "Needs a mod loader. Create a Fabric, Quilt or NeoForge instance to share worlds online."}
+                  ? tr("One click adds e4mc to this instance. Then Open to LAN gives you a public address anyone can join, even friends on a plain unmodded game.")
+                  : tr("Needs a mod loader. Create a Fabric, Quilt or NeoForge instance to share worlds online.")}
             </p>
           </div>
-          {canShare && !hasE4mc && <Button variant="primary" icon={Globe2} loading={busy} onClick={enableSharing}>Turn on sharing</Button>}
-          {hasE4mc && <Badge tone="accent">Sharing ready</Badge>}
+          {canShare && !hasE4mc && <Button variant="primary" icon={Globe2} loading={busy} onClick={enableSharing}>{tr("Turn on sharing")}</Button>}
+          {hasE4mc && <Badge tone="accent">{tr("Sharing ready")}</Badge>}
         </div>
       </Glass>
       {worlds.isLoading ? <Skeleton className="h-40" /> : worlds.data?.length ? (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
           {worlds.data.map((w, i) => <WorldCard key={w.folder} w={w} i={i} inst={inst} />)}
         </ul>
-      ) : <Empty icon={Globe2} title="No worlds yet">Play this instance and create a world; it'll show up here.</Empty>}
-      <div><Button icon={FolderOpen} onClick={() => api.openFolder(inst.id, "saves")}>Open saves folder</Button></div>
+      ) : <Empty icon={Globe2} title={tr("No worlds yet")}>{tr("Play this instance and create a world; it'll show up here.")}</Empty>}
+      <div><Button icon={FolderOpen} onClick={() => api.openFolder(inst.id, "saves")}>{tr("Open saves folder")}</Button></div>
     </div>
   );
 }
@@ -380,30 +381,30 @@ function WorldCard({ w, i, inst }: { w: World; i: number; inst: Inst }) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
         <div className="absolute bottom-2 left-3 right-3 flex items-end justify-between gap-2">
           <p className="truncate text-[15px] font-bold text-white drop-shadow">{info?.name || w.folder}</p>
-          {info?.days != null && <span className="shrink-0 rounded-chip bg-black/50 px-2 py-0.5 text-[11px] text-white">Day {info.days.toLocaleString()}</span>}
+          {info?.days != null && <span className="shrink-0 rounded-chip bg-black/50 px-2 py-0.5 text-[11px] text-white">{tr("Day {n0}", { n0: info.days.toLocaleString(locale()) })}</span>}
         </div>
       </button>
       <div className="p-3">
         <div className="flex flex-wrap items-center gap-1.5">
-          {info?.gameMode && <Badge tone={MODE_TONE[info.gameMode] ?? "neutral"}>{info.hardcore ? "Hardcore" : info.gameMode[0]!.toUpperCase() + info.gameMode.slice(1)}</Badge>}
+          {info?.gameMode && <Badge tone={MODE_TONE[info.gameMode] ?? "neutral"}>{info.hardcore ? tr("Hardcore") : info.gameMode[0]!.toUpperCase() + info.gameMode.slice(1)}</Badge>}
           {info?.difficulty && !info.hardcore && <Badge>{info.difficulty[0]!.toUpperCase() + info.difficulty.slice(1)}</Badge>}
-          {info?.cheats && <Badge>Cheats</Badge>}
+          {info?.cheats && <Badge>{tr("Cheats")}</Badge>}
           {info?.version && <Badge>{info.version}</Badge>}
         </div>
-        <p className="mt-1.5 text-[12px] text-muted">Played {ago(new Date(w.modified * 1000).toISOString())} · {w.sizeMb.toFixed(1)} MB</p>
+        <p className="mt-1.5 text-[12px] text-muted">{tr("Played {n0} · {n1} MB", { n0: ago(new Date(w.modified * 1000).toISOString()), n1: w.sizeMb.toFixed(1) })}</p>
         <AnimatePresence initial={false}>
           {open && (
             <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
               <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[12px]">
-                <dt className="text-muted">Folder</dt><dd className="truncate" data-selectable>{w.folder}</dd>
-                {info?.seed && <><dt className="text-muted">Seed</dt><dd className="truncate font-mono" data-selectable>{info.seed}</dd></>}
+                <dt className="text-muted">{tr("Folder")}</dt><dd className="truncate" data-selectable>{w.folder}</dd>
+                {info?.seed && <><dt className="text-muted">{tr("Seed")}</dt><dd className="truncate font-mono" data-selectable>{info.seed}</dd></>}
               </dl>
             </motion.div>
           )}
         </AnimatePresence>
         <div className="mt-3 flex gap-2">
-          <Button size="sm" variant="primary" icon={Play} disabled={busy} onClick={() => play(inst, undefined, w.folder)}>Play</Button>
-          <Button size="sm" icon={FolderOpen} onClick={() => api.openFolder(inst.id, `saves/${w.folder}`)}>Folder</Button>
+          <Button size="sm" variant="primary" icon={Play} disabled={busy} onClick={() => play(inst, undefined, w.folder)}>{tr("Play")}</Button>
+          <Button size="sm" icon={FolderOpen} onClick={() => api.openFolder(inst.id, `saves/${w.folder}`)}>{tr("Folder")}</Button>
         </div>
       </div>
     </motion.li>
@@ -414,7 +415,7 @@ function Screenshots({ inst }: { inst: Inst }) {
   const shots = useQuery({ queryKey: ["shots", inst.id], queryFn: () => api.listScreenshots(inst.id) });
   const [view, setView] = useState<string | null>(null);
   if (shots.isLoading) return <Skeleton className="h-60" />;
-  if (!shots.data?.length) return <Empty icon={Camera} title="No screenshots yet">Press F2 in game to take one.</Empty>;
+  if (!shots.data?.length) return <Empty icon={Camera} title={tr("No screenshots yet")}>{tr("Press F2 in game to take one.")}</Empty>;
   return (
     <>
       <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
@@ -424,9 +425,9 @@ function Screenshots({ inst }: { inst: Inst }) {
           </motion.button>
         ))}
       </div>
-      <Modal open={!!view} onClose={() => setView(null)} title="Screenshot" width="w-[1000px]">
+      <Modal open={!!view} onClose={() => setView(null)} title={tr("Screenshot")} width="w-[1000px]">
         {view && <img src={fileSrc(view)} alt="" className="w-full rounded-card" />}
-        <div className="mt-3"><Button icon={FolderOpen} onClick={() => api.openFolder(inst.id, "screenshots")}>Open folder</Button></div>
+        <div className="mt-3"><Button icon={FolderOpen} onClick={() => api.openFolder(inst.id, "screenshots")}>{tr("Open folder")}</Button></div>
       </Modal>
     </>
   );
@@ -450,7 +451,7 @@ function InstanceSettings({ inst }: { inst: Inst }) {
   const save = async () => {
     await api.updateInstance(inst.id, { name, memoryMb: memory, jvmArgs: jvm.split(/\s+/).filter(Boolean) });
     await refresh();
-    toast({ title: "Saved", tone: "success" });
+    toast({ title: tr("Saved"), tone: "success" });
   };
   const setProfile = async (pid: string | null) => {
     await api.updateInstance(inst.id, { gameProfile: pid });
@@ -458,55 +459,55 @@ function InstanceSettings({ inst }: { inst: Inst }) {
   };
   const saveAsProfile = async () => {
     try {
-      const store = await api.profileFromInstance(inst.id, `${inst.name} settings`);
+      const store = await api.profileFromInstance(inst.id, tr("{name} settings", { name: inst.name }));
       qc.setQueryData(["profiles"], store);
-      toast({ title: "Saved as a profile", body: "Find it in Settings → Game profiles.", tone: "success" });
+      toast({ title: tr("Saved as a profile"), body: tr("Find it in Settings → Game profiles."), tone: "success" });
     } catch (e) {
-      toast({ title: "Couldn't save", body: String(e), tone: "error" });
+      toast({ title: tr("Couldn't save"), body: String(e), tone: "error" });
     }
   };
   const del = async () => {
     await api.deleteInstance(inst.id);
     await refresh();
     navigate("/");
-    toast({ title: `Deleted ${inst.name}`, tone: "info" });
+    toast({ title: tr("Deleted {name}", { name: inst.name }), tone: "info" });
   };
-  const advice = useMemo(() => (memory < 3072 ? "Tight for modded play." : memory > 8192 ? "Only big modpacks need this much." : "A good amount for most setups."), [memory]);
+  const advice = useMemo(() => (memory < 3072 ? tr("Tight for modded play.") : memory > 8192 ? tr("Only big modpacks need this much.") : tr("A good amount for most setups.")), [memory]);
 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <Glass className="flex flex-col gap-4 p-5">
-        <h3 className="text-[16px] font-bold">General</h3>
-        <Field label="Name"><input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} /></Field>
-        <Slider label="Memory" value={memory} onChange={setMemory} min={1024} max={maxMem} step={512} format={(v) => `${(v / 1024).toFixed(1)} GB`} detail={advice} />
-        <Field label="Extra Java arguments" hint="Advanced. Separate with spaces."><input value={jvm} onChange={(e) => setJvm(e.target.value)} placeholder="-XX:+UseZGC" className={`${inputClass} font-[ui-monospace,monospace]`} /></Field>
-        <div><Button variant="primary" icon={Save} disabled={!dirty} onClick={save}>Save changes</Button></div>
+        <h3 className="text-[16px] font-bold">{tr("General")}</h3>
+        <Field label={tr("Name")}><input value={name} onChange={(e) => setName(e.target.value)} className={inputClass} /></Field>
+        <Slider label={tr("Memory")} value={memory} onChange={setMemory} min={1024} max={maxMem} step={512} format={(v) => `${(v / 1024).toFixed(1)} GB`} detail={advice} />
+        <Field label={tr("Extra Java arguments")} hint={tr("Advanced. Separate with spaces.")}><input value={jvm} onChange={(e) => setJvm(e.target.value)} placeholder="-XX:+UseZGC" className={`${inputClass} font-[ui-monospace,monospace]`} /></Field>
+        <div><Button variant="primary" icon={Save} disabled={!dirty} onClick={save}>{tr("Save changes")}</Button></div>
       </Glass>
       <Glass className="flex flex-col gap-4 p-5">
-        <h3 className="text-[16px] font-bold">Game settings profile</h3>
-        <p className="text-[13px] text-muted">Keybinds, FOV, video and sound settings you made once in Settings → Game profiles.</p>
+        <h3 className="text-[16px] font-bold">{tr("Game settings profile")}</h3>
+        <p className="text-[13px] text-muted">{tr("Keybinds, FOV, video and sound settings you made once in Settings → Game profiles.")}</p>
         <select value={inst.gameProfile ?? ""} onChange={(e) => setProfile(e.target.value || null)} className={inputClass}>
-          <option value="">None (Minecraft defaults)</option>
+          <option value="">{tr("None (Minecraft defaults)")}</option>
           {(profiles.data?.profiles ?? []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
-        <Toggle checked={!!inst.profileEveryLaunch} onChange={async (v) => { await api.updateInstance(inst.id, { profileEveryLaunch: v }); refresh(); }} label="Apply every launch" detail="Otherwise only once, so in-game changes are kept." />
-        <Button icon={Save} onClick={saveAsProfile}>Save this instance's in-game settings as a profile</Button>
+        <Toggle checked={!!inst.profileEveryLaunch} onChange={async (v) => { await api.updateInstance(inst.id, { profileEveryLaunch: v }); refresh(); }} label={tr("Apply every launch")} detail={tr("Otherwise only once, so in-game changes are kept.")} />
+        <Button icon={Save} onClick={saveAsProfile}>{tr("Save this instance's in-game settings as a profile")}</Button>
       </Glass>
       <Glass className="flex flex-col gap-3 p-5 md:col-span-2">
-        <h3 className="text-[16px] font-bold">Folders</h3>
+        <h3 className="text-[16px] font-bold">{tr("Folders")}</h3>
         <div className="flex flex-wrap gap-2">
-          {["", "mods", "config", "saves", "resourcepacks", "shaderpacks", "screenshots", "logs"].map((s) => <Button key={s || "root"} size="sm" icon={FolderOpen} onClick={() => api.openFolder(inst.id, s || undefined)}>{s || "Instance folder"}</Button>)}
+          {["", "mods", "config", "saves", "resourcepacks", "shaderpacks", "screenshots", "logs"].map((s) => <Button key={s || "root"} size="sm" icon={FolderOpen} onClick={() => api.openFolder(inst.id, s || undefined)}>{s || tr("Instance folder")}</Button>)}
         </div>
       </Glass>
       <Glass className="flex items-center justify-between gap-4 border-redstone/25 p-5 md:col-span-2">
         <div>
-          <h3 className="text-[16px] font-bold">Delete instance</h3>
-          <p className="text-[13px] text-muted">Removes its folder, including worlds and screenshots. This can't be undone.</p>
+          <h3 className="text-[16px] font-bold">{tr("Delete instance")}</h3>
+          <p className="text-[13px] text-muted">{tr("Removes its folder, including worlds and screenshots. This can't be undone.")}</p>
         </div>
-        <Button variant="danger" icon={Trash2} onClick={() => setConfirm(true)}>Delete</Button>
+        <Button variant="danger" icon={Trash2} onClick={() => setConfirm(true)}>{tr("Delete")}</Button>
       </Glass>
-      <Modal open={confirm} onClose={() => setConfirm(false)} title={`Delete ${inst.name}?`} footer={<><Button onClick={() => setConfirm(false)}>Cancel</Button><Button variant="danger" icon={Trash2} onClick={del}>Delete forever</Button></>}>
-        <p className="text-muted">All worlds, mods and screenshots in this instance will be deleted.</p>
+      <Modal open={confirm} onClose={() => setConfirm(false)} title={tr("Delete {name}?", { name: inst.name })} footer={<><Button onClick={() => setConfirm(false)}>{tr("Cancel")}</Button><Button variant="danger" icon={Trash2} onClick={del}>{tr("Delete forever")}</Button></>}>
+        <p className="text-muted">{tr("All worlds, mods and screenshots in this instance will be deleted.")}</p>
       </Modal>
     </div>
   );

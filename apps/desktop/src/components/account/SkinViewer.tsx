@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as skinview3d from "skinview3d";
+import { tr } from "../../lib/i18n";
 
 export type Pose = "idle" | "walk" | "run" | "wave" | "crouch" | "fly";
 export type Back = "cape" | "elytra" | "none";
@@ -127,7 +128,7 @@ export function SkinViewer({
     // Positioned by the caller (e.g. "absolute inset-0"); never mix with "relative", which
     // would collapse the box to 0 px tall (the canvas inside is absolutely positioned).
     <div ref={wrap} className={`cursor-grab active:cursor-grabbing ${className.includes("absolute") ? className : `relative h-full w-full ${className}`}`}>
-      <canvas ref={canvas} className="absolute inset-0 size-full" aria-label="3D preview of your skin: drag to rotate, scroll to zoom" />
+      <canvas ref={canvas} className="absolute inset-0 size-full" aria-label={tr("3D preview of your skin: drag to rotate, scroll to zoom")} />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import { compact } from "../lib/format";
 import { isInstalled, useDiscover, useInstalled } from "../lib/queries";
 import { useApp } from "../state";
 import { IconButton, Skeleton, inputClass } from "./ui";
+import { tr } from "../lib/i18n";
 
 /**
  * Search-and-add right inside an instance: results are already filtered to its game
@@ -40,15 +41,15 @@ export function AddContentPanel({ inst, category, onClose }: { inst: Instance; c
         <div className="mb-3 flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-            <input ref={input} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Escape" && onClose()} placeholder={`Search ${noun} for ${inst.gameVersion}${category === "mods" ? ` (${inst.loader})` : ""}`} className={`${inputClass} pl-9`} />
+            <input ref={input} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={(e) => e.key === "Escape" && onClose()} placeholder={tr("Search {noun} for {gameVersion}{n2}", { noun, gameVersion: inst.gameVersion, n2: category === "mods" ? ` (${inst.loader})` : "" })} className={`${inputClass} pl-9`} />
           </div>
-          <IconButton icon={X} label="Close" onClick={onClose} />
+          <IconButton icon={X} label={tr("Close")} onClick={onClose} />
         </div>
         <div className="grid max-h-[420px] grid-cols-1 gap-2 overflow-y-auto pr-1 md:grid-cols-2">
           {results.isLoading
             ? [...Array(6)].map((_, i) => <Skeleton key={i} className="h-16" />)
             : (results.data?.hits ?? []).map((h) => <Row key={h.id} hit={h} inst={inst} category={category} installed={isInstalled(installed, h)} />)}
-          {results.data && results.data.hits.length === 0 && <p className="col-span-full py-6 text-center text-[14px] text-muted">Nothing for {inst.gameVersion} matches “{debounced}”.</p>}
+          {results.data && results.data.hits.length === 0 && <p className="col-span-full py-6 text-center text-[14px] text-muted">{tr("Nothing for {gameVersion} matches “{debounced}”.", { gameVersion: inst.gameVersion, debounced })}</p>}
         </div>
       </div>
     </motion.div>
@@ -68,10 +69,10 @@ function Row({ hit, inst, category, installed }: { hit: ContentHit; inst: Instan
     try {
       const summary = await installProject(category, hit, { instance: inst });
       setJustAdded(true);
-      toast({ title: `${hit.title} added`, body: summary, tone: "success" });
+      toast({ title: tr("{title} added", { title: hit.title }), body: summary, tone: "success" });
       qc.invalidateQueries({ queryKey: ["content", inst.id] });
     } catch (err) {
-      toast({ title: `Couldn't add ${hit.title}`, body: err instanceof Error ? err.message : String(err), tone: "error" });
+      toast({ title: tr("Couldn't add {title}", { title: hit.title }), body: err instanceof Error ? err.message : String(err), tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -94,11 +95,11 @@ function Row({ hit, inst, category, installed }: { hit: ContentHit; inst: Instan
       <AnimatePresence mode="wait" initial={false}>
         {done ? (
           <motion.span key="done" initial={{ scale: 0.6, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="flex shrink-0 items-center gap-1 rounded-chip bg-copper/15 px-2.5 py-1.5 text-[12px] font-medium text-copper">
-            <Check className="size-3.5" /> Installed
+            <Check className="size-3.5" /> {tr("Installed")}
           </motion.span>
         ) : (
           <motion.button key="add" type="button" onClick={add} disabled={busy} className="press press-accent flex shrink-0 items-center gap-1 rounded-chip bg-copper px-2.5 py-1.5 text-[12px] font-medium text-on-accent">
-            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />} Add
+            {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />} {tr("Add")}
           </motion.button>
         )}
       </AnimatePresence>
