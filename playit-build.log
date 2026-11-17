@@ -1,0 +1,6 @@
+total 7189
+drwxr-xr-x 1 runneradmin 197121       0 Nov 17 14:14 .
+drwxr-xr-x 1 runneradmin 197121       0 Nov 17 14:13 ..
+-rw-r--r-- 1 runneradmin 197121    1274 Nov 17 14:14 LICENSE-playit.txt
+-rw-r--r-- 1 runneradmin 197121      79 Nov 17 14:13 README.txt
+-rwxr-xr-x 1 runneradmin 197121 7353344 Nov 17 14:14 playitd.exe
