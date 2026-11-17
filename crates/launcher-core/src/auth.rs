@@ -196,15 +196,32 @@ impl MicrosoftAuth {
         let mc_token = mc["access_token"].as_str().ok_or_else(|| Error::Auth("no MC token".into()))?.to_string();
         let expires_in = mc["expires_in"].as_i64().unwrap_or(86_400);
 
-        // Ownership + profile
-        let ent: serde_json::Value =
-            self.client.get(MC_ENTITLEMENTS).bearer_auth(&mc_token).send().await?.error_for_status()?.json().await?;
-        if ent["items"].as_array().map(|a| a.is_empty()).unwrap_or(true) {
-            return Err(Error::NoEntitlement);
-        }
-        let profile = self.client.get(MC_PROFILE).bearer_auth(&mc_token).send().await?;
+        // Ownership + profile. Mojang rate-limits these (429), so retry briefly, and treat the
+        // ownership list as a hint: a profile with a name is what actually lets you play.
+        let owns = match self.get_retrying(MC_ENTITLEMENTS, &mc_token).await {
+            Ok(r) if r.status().is_success() => {
+                let ent: serde_json::Value = r.json().await.unwrap_or_default();
+                Some(ent["items"].as_array().map(|a| !a.is_empty()).unwrap_or(false))
+            }
+            Ok(r) => {
+                tracing::warn!(status = %r.status(), "ownership check failed, going by the profile");
+                None
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "ownership check failed, going by the profile");
+                None
+            }
+        };
+        let profile = self.get_retrying(MC_PROFILE, &mc_token).await?;
         if profile.status() == reqwest::StatusCode::NOT_FOUND {
-            return Err(Error::Auth("this account has no Minecraft profile yet - launch the official launcher once to create it".into()));
+            return Err(if owns == Some(false) {
+                Error::NoEntitlement
+            } else {
+                Error::Auth("this account has no Minecraft profile yet - launch the official launcher once to create it".into())
+            });
+        }
+        if profile.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            return Err(Error::Auth("Minecraft's servers are busy (too many sign-ins in a short time). Wait a few minutes and try again.".into()));
         }
         let profile: serde_json::Value = profile.error_for_status()?.json().await?;
 
@@ -217,6 +234,28 @@ impl MicrosoftAuth {
             ms_refresh_token: ms.refresh_token,
             skin_url: profile["skins"][0]["url"].as_str().map(String::from),
         })
+    }
+}
+
+impl MicrosoftAuth {
+    /// GET with a bearer token, waiting and retrying up to twice on 429 (rate limited).
+    async fn get_retrying(&self, url: &str, token: &str) -> Result<reqwest::Response> {
+        let mut attempt = 0;
+        loop {
+            let res = self.client.get(url).bearer_auth(token).send().await?;
+            if res.status() != reqwest::StatusCode::TOO_MANY_REQUESTS || attempt >= 2 {
+                return Ok(res);
+            }
+            let wait = res
+                .headers()
+                .get(reqwest::header::RETRY_AFTER)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|v| v.trim().parse::<u64>().ok())
+                .unwrap_or(3 + attempt * 5)
+                .min(20);
+            attempt += 1;
+            tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+        }
     }
 }
 
