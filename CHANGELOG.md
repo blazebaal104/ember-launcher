@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.1
+- **Ember no longer signs you out when Microsoft has a hiccup.** Before, any odd reply from Microsoft while renewing your sign-in counted as "signed out". Now only a sign-in that is really gone (revoked, expired after 90 days unused) does; anything else shows an error and keeps your account.
+- If renewing fails for a moment but your current Minecraft session is still valid, the game launches anyway.
+
 ## 0.8.0
 - **Ember speaks Italian.** The first time Ember starts it asks for your language (English or Italiano) before the tour, and the whole launcher follows it: menus, pages, settings, buttons, messages, dates.
 - Change the language any time in **Settings → Launcher** or **Settings → About**. Ember reloads its window to switch.

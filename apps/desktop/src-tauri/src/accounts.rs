@@ -144,7 +144,15 @@ pub async fn ensure_account(state: &AppState) -> Result<Account> {
             save_store(state, &store).await;
             return Err(Error::NotSignedIn);
         }
-        Err(e) => return Err(e),
+        Err(e) => {
+            // A hiccup at Microsoft, Xbox or Mojang. The Minecraft token we already hold
+            // may still be good for a while, so don't block playing over it.
+            if let Some(a) = guard.as_ref().filter(|a| a.uuid == active && a.mc_expires_at > now() + 60) {
+                tracing::warn!(error = %e, "refresh failed, using the current Minecraft token");
+                return Ok(a.clone());
+            }
+            return Err(e);
+        }
     };
     store_token(state, &fresh.uuid, &fresh.ms_refresh_token).await;
     if let Some(s) = store.accounts.iter_mut().find(|a| a.uuid == fresh.uuid) {

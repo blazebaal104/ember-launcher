@@ -127,12 +127,17 @@ impl MicrosoftAuth {
             .send()
             .await?;
         if !res.status().is_success() {
+            let status = res.status().as_u16();
             let body: serde_json::Value = res.json().await.unwrap_or_default();
             return Err(match body["error"].as_str() {
-                // Revoked, expired (90 days unused) or issued to another client id.
-                Some("invalid_grant") | Some("unauthorized_client") => Error::NotSignedIn,
+                // Only these mean the saved sign-in is really gone: revoked, expired (90 days
+                // unused), needs consent again, or issued to another client id.
+                Some("invalid_grant") | Some("unauthorized_client") | Some("interaction_required") | Some("consent_required") => {
+                    Error::NotSignedIn
+                }
                 Some(e) => classify_ms_error(e, body["error_description"].as_str().unwrap_or("")),
-                None => Error::NotSignedIn,
+                // An outage or a garbled reply: keep the account, the next try may work.
+                None => Error::Auth(format!("Microsoft's sign-in service didn't answer properly (HTTP {status}). Try again in a minute.")),
             });
         }
         self.minecraft_login(res.json().await?).await
